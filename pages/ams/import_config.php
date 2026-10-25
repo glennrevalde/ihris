@@ -1,0 +1,215 @@
+<?php
+/**
+ * Import Log Configuration — how a log file is read: delimited columns or fixed-width
+ * start/width positions for the employee ID, date, time, log type and device, with a
+ * "Test import" preview of the first lines of a real file.
+ */
+$id = (int)get('id', 0);
+$rec = $id ? row('SELECT * FROM import_profiles WHERE id = ?', [$id]) : null;
+$preview = null;
+$previewErr = null;
+
+if (is_post()) {
+    verify_csrf();
+    $action = post('_action');
+    $data = [
+        'name' => trim((string)post('name')) ?: 'Log format',
+        'layout' => post('layout') === 'fixed' ? 'fixed' : 'delimited',
+        'delimiter' => post('delimiter') ?: 'tab',
+        'has_header' => post('has_header') ? 1 : 0,
+        'col_bio_id' => (int)post('col_bio_id') ?: 1,
+        'col_datetime' => post('col_datetime') !== '' ? (int)post('col_datetime') : null,
+        'col_date' => post('col_date') !== '' ? (int)post('col_date') : null,
+        'col_time' => post('col_time') !== '' ? (int)post('col_time') : null,
+        'col_punch' => post('col_punch') !== '' ? (int)post('col_punch') : null,
+        'col_device' => post('col_device') !== '' ? (int)post('col_device') : null,
+        'datetime_format' => trim((string)post('datetime_format')) ?: 'Y-m-d H:i:s',
+        'punch_map' => trim((string)post('punch_map')) ?: null,
+        'default_branch_id' => post('default_branch_id') ?: null,
+        'notes' => trim((string)post('notes')) ?: null,
+    ];
+    if (import_profiles_sorted()) {
+        $data['sort_order'] = max(0, min(999, (int)post('sort_order')));   // v19: the order of the configurations in the selections
+    }
+    foreach (['id', 'date', 'time', 'type', 'dev'] as $k) {
+        $data['fw_' . $k . '_start'] = post('fw_' . $k . '_start') !== '' ? (int)post('fw_' . $k . '_start') : null;
+        $data['fw_' . $k . '_width'] = post('fw_' . $k . '_width') !== '' ? (int)post('fw_' . $k . '_width') : null;
+    }
+    try {
+        if ($action === 'delete' && $id) {
+            q('DELETE FROM import_profiles WHERE id = ?', [$id]);
+            audit('ams', 'import_profile_delete', 'import_profiles', $id);
+            flash('success', 'Configuration deleted.');
+            redirect('import_config');
+        }
+        if ($action === 'default' && $id) {
+            q('UPDATE import_profiles SET is_default = IF(id = ?, 1, 0)', [$id]);
+            flash('success', 'Default configuration set.');
+            redirect('import_config', ['id' => $id]);
+        }
+        if ($action === 'save' || $action === 'test') {
+            if ($id) {
+                update('import_profiles', $data, 'id = ?', [$id]);
+                audit('ams', 'import_profile_update', 'import_profiles', $id, $data);
+            } else {
+                $id = insert('import_profiles', $data);
+                audit('ams', 'import_profile_create', 'import_profiles', $id, $data);
+            }
+            if ($action === 'save') {
+                flash('success', 'Import configuration saved.');
+                redirect('import_config', ['id' => $id]);
+            }
+            // test import: parse the uploaded sample without staging anything
+            if (empty($_FILES['sample']['tmp_name'])) {
+                throw new RuntimeException('Choose a sample log file to test the configuration.');
+            }
+            $profile = row('SELECT * FROM import_profiles WHERE id = ?', [$id]);
+            $_SESSION['import_test'] = ['rows' => array_slice(parse_log_file((string)$_FILES['sample']['tmp_name'], $profile, 25), 0, 25),
+                'raw' => array_slice(file((string)$_FILES['sample']['tmp_name'], FILE_IGNORE_NEW_LINES), 0, 8), 'name' => (string)$_FILES['sample']['name']];
+            flash('success', 'Test import finished — the preview is below. Nothing was imported.');
+            redirect('import_config', ['id' => $id, 'test' => 1]);
+        }
+    } catch (RuntimeException $e) {
+        flash('error', $e->getMessage());
+        redirect('import_config', ['id' => $id]);
+    }
+}
+if (get('test') && !empty($_SESSION['import_test'])) {
+    $preview = $_SESSION['import_test'];
+    unset($_SESSION['import_test']);
+}
+$list = rows('SELECT p.*, (SELECT COUNT(*) FROM import_batches b WHERE b.profile_id = p.id) AS uses FROM import_profiles p ORDER BY ' . (import_profiles_sorted() ? 'p.sort_order, ' : '') . 'p.id');
+$rec = $rec ?: ($id ? row('SELECT * FROM import_profiles WHERE id = ?', [$id]) : null);
+$v = fn(string $k, $d = '') => h((string)($rec[$k] ?? $d));
+
+page_header('Import Log Configuration', [
+    'subtitle' => 'One configuration per log format. Fixed-width files are read by character positions (start and width), delimited files by column number.',
+    'actions' => '<a class="btn" href="' . url('import_logs') . '">Import attendance logs</a>' . ($id ? '<a class="btn" href="' . url('import_config') . '">New configuration</a>' : ''),
+]);
+?>
+<div class="grid grid-1-2">
+  <div class="card flush">
+    <div class="card-head"><h2>Configurations</h2></div>
+    <div class="list-nav">
+      <?php foreach ($list as $p): ?>
+        <a class="<?= (int)$p['id'] === $id ? 'active' : '' ?>" href="<?= h(url('import_config', ['id' => $p['id']])) ?>">
+          <span class="ln-main"><strong><?= h($p['name']) ?><?= $p['is_default'] ? ' ★' : '' ?></strong>
+            <small><?= isset($p['sort_order']) ? (int)$p['sort_order'] . '. ' : '' ?><?= h(label($p['layout'])) ?>, <?= (int)$p['uses'] ?> import(s)</small></span>
+        </a>
+      <?php endforeach; ?>
+      <?php if (!$list): ?><p class="muted" style="padding:12px">No configuration yet.</p><?php endif; ?>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2><?= $rec ? 'Edit configuration' : 'New configuration' ?></h2>
+    <form method="post" enctype="multipart/form-data">
+      <?= csrf_field() ?>
+      <div class="form-grid">
+        <div class="field wide"><label>Name</label><input name="name" value="<?= $v('name') ?>" required placeholder="e.g. ZKTeco attlog.dat"></div>
+        <?php if (import_profiles_sorted()): ?><div class="field"><label>Display order</label><input type="number" min="0" max="999" name="sort_order" value="<?= $v('sort_order', $rec ? 0 : (int)val('SELECT COALESCE(MAX(sort_order), 0) + 1 FROM import_profiles')) ?>">
+          <span class="help">Position in the Import configuration lists (1 = first).</span></div><?php endif; ?>
+        <div class="field"><label>Layout</label><select name="layout" id="layoutSel"><?= options(['delimited' => 'Delimited columns (TAB / CSV)', 'fixed' => 'Fixed width (positions)'], $rec['layout'] ?? 'delimited') ?></select></div>
+        <div class="field"><label>With header</label><label class="check"><input type="checkbox" name="has_header" value="1" <?= checked(!empty($rec['has_header'])) ?>> The first line is a header</label></div>
+        <div class="field"><label>Date &amp; time format</label><input name="datetime_format" value="<?= $v('datetime_format', 'Y-m-d H:i:s') ?>" required>
+          <span class="help">PHP format of the date + time once joined, e.g. <code>Y-m-d H:i:s</code>, <code>m/d/Y h:i A</code>, <code>d/m/Y H:i</code></span></div>
+        <div class="field"><label>Default company / branch</label><select name="default_branch_id"><?= options(pairs("SELECT id, CONCAT(COALESCE(branch_code, code), ' — ', name) FROM branches WHERE is_active = 1 ORDER BY code"), $rec['default_branch_id'] ?? null, 'None') ?></select></div>
+        <div class="field wide"><label>Log-type map</label><input name="punch_map" value="<?= $v('punch_map') ?>" placeholder="0=in,1=out,2=break_out,3=break_in">
+          <span class="help">Leave blank to place the logs by the employee's shift code instead: 2 logs a day = In, Out; 4 = In, Break out, Break in, Out; 6 = In, Break out 1, Break in 1, Break out 2, Break in 2, Out. For ZK state codes type 0=in,1=out,2=break_out,3=break_in,4=break_out,5=break_in.</span></div>
+      </div>
+
+      <fieldset class="box" id="fxDelimited">
+        <legend>Delimited columns</legend>
+        <div class="form-grid cols-3">
+          <div class="field"><label>Delimiter</label><select name="delimiter"><?= options(['tab' => 'Tab', 'comma' => 'Comma (,)', 'semicolon' => 'Semicolon (;)', 'pipe' => 'Pipe (|)', 'space' => 'Whitespace'], $rec['delimiter'] ?? 'tab') ?></select></div>
+          <div class="field"><label>Column: employee / biometric ID</label><input type="number" min="1" name="col_bio_id" value="<?= $v('col_bio_id', 1) ?>"></div>
+          <div class="field"><label>Column: date &amp; time (combined)</label><input type="number" min="0" name="col_datetime" value="<?= $v('col_datetime') ?>"></div>
+          <div class="field"><label>Column: date</label><input type="number" min="0" name="col_date" value="<?= $v('col_date') ?>"></div>
+          <div class="field"><label>Column: time</label><input type="number" min="0" name="col_time" value="<?= $v('col_time') ?>"></div>
+          <div class="field"><label>Column: log type</label><input type="number" min="0" name="col_punch" value="<?= $v('col_punch') ?>"></div>
+          <div class="field"><label>Column: device</label><input type="number" min="0" name="col_device" value="<?= $v('col_device') ?>"></div>
+        </div>
+      </fieldset>
+
+      <fieldset class="box" id="fxFixed">
+        <legend>Fixed width (start position and width, first character = 1)</legend>
+        <table class="matrix">
+          <thead><tr><th class="rowh"></th><th>Start</th><th>Width</th></tr></thead>
+          <tbody>
+          <?php foreach (['id' => 'Employee / biometric ID', 'date' => 'Date', 'time' => 'Time', 'type' => 'Log type', 'dev' => 'Bio ID / device'] as $k => $lbl): ?>
+            <tr><th class="rowh"><?= h($lbl) ?></th>
+              <td><input type="number" min="0" name="fw_<?= $k ?>_start" value="<?= $v('fw_' . $k . '_start') ?>"></td>
+              <td><input type="number" min="0" name="fw_<?= $k ?>_width" value="<?= $v('fw_' . $k . '_width') ?>"></td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+      </fieldset>
+
+      <fieldset class="box">
+        <legend>Test import</legend>
+        <div class="form-grid">
+          <div class="field wide"><label>Sample log file</label><input type="file" name="sample" accept=".dat,.txt,.log,.csv,.tsv">
+            <span class="help">The first 25 lines are parsed and shown below. Nothing is imported.</span></div>
+          <div class="field wide"><label>Notes</label><input name="notes" value="<?= $v('notes') ?>"></div>
+        </div>
+      </fieldset>
+
+      <div class="form-actions">
+        <button class="btn btn-primary" name="_action" value="save">Save configuration</button>
+        <button class="btn" name="_action" value="test">Test import</button>
+        <?php if ($id): ?>
+          <button class="btn" name="_action" value="default">Set as default</button>
+          <button class="btn btn-danger-outline" name="_action" value="delete" data-confirm="Delete this configuration?">Delete</button>
+        <?php endif; ?>
+      </div>
+    </form>
+  </div>
+</div>
+
+<?php if ($preview): ?>
+<div class="card">
+  <h2>Preview — <?= h($preview['name']) ?></h2>
+  <h3>Raw lines</h3>
+  <pre class="mono" style="background:var(--surface-2);padding:10px;border-radius:8px;overflow-x:auto"><?php
+    $ruler = '';
+  for ($i = 1; $i <= 80; $i++) {
+      $ruler .= $i % 10 === 0 ? (string)(($i / 10) % 10) : ($i % 5 === 0 ? '+' : '.');
+  }
+  echo h($ruler) . "\n" . h(implode("\n", $preview['raw']));
+  ?></pre>
+  <h3>Parsed result</h3>
+  <div class="table-wrap">
+    <table class="table table-compact">
+      <thead><tr><th>Line</th><th>Employee / bio ID</th><th>Matched employee</th><th>Date &amp; time</th><th>Log type</th><th>Device</th><th>Error</th></tr></thead>
+      <tbody>
+      <?php $bioMap = pairs('SELECT biometric_id, CONCAT(last_name, ", ", first_name) FROM employees WHERE biometric_id IS NOT NULL AND biometric_id <> ""');
+      foreach ($preview['rows'] as $r):
+          $key = ltrim((string)$r['bio_id'], '0') ?: (string)$r['bio_id']; ?>
+        <tr class="<?= $r['error'] ? 'row-bad' : '' ?>">
+          <td><?= (int)$r['line_no'] ?></td>
+          <td><?= h((string)$r['bio_id']) ?></td>
+          <td><?= h($bioMap[$r['bio_id']] ?? ($bioMap[$key] ?? '—')) ?></td>
+          <td><?= h((string)($r['log_time'] ?? '')) ?></td>
+          <td><?= h((string)$r['punch_type']) ?></td>
+          <td><?= h((string)($r['device_id'] ?? '')) ?></td>
+          <td class="small"><?= h((string)($r['error'] ?? '')) ?></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+</div>
+<?php endif; ?>
+<script>
+(function () {
+  var sel = document.getElementById('layoutSel');
+  function sync() {
+    var fixed = sel.value === 'fixed';
+    document.getElementById('fxFixed').style.display = fixed ? '' : 'none';
+    document.getElementById('fxDelimited').style.display = fixed ? 'none' : '';
+  }
+  if (sel) { sel.addEventListener('change', sync); sync(); }
+})();
+</script>
+<?php page_footer();

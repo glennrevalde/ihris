@@ -1,0 +1,15 @@
+{
+  "hris_url": "https://your-hris-domain/index.php?p=bio_push&co=1",
+  "batch_size": 2000,
+  "devices": [
+    {
+      "name": "Office Biometrics",
+      "ip": "192.168.1.201",
+      "port": 4370,
+      "comm_key": 0,
+      "machine": 1,
+      "token": "zk_paste_the_device_token_from_Biometric_Device_Setup",
+      "clear_after_push": false
+    }
+  ]
+}

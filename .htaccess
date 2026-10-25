@@ -1,0 +1,14 @@
+Options -Indexes
+DirectoryIndex index.php
+
+# Uploaded files are served through index.php?p=file (authorization-checked)
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "same-origin"
+</IfModule>
+
+<IfModule mod_php.c>
+    php_value upload_max_filesize 12M
+    php_value post_max_size 16M
+</IfModule>
