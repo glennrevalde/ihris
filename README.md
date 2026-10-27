@@ -193,6 +193,14 @@ Demo data covers **August–September 2026**: August has approved cutoffs and fi
 | Multi-location hours listed by Co. / Branch | Payroll Batch Transaction and Attendance Batch Transaction Entry: choosing a company / branch lists its employees **and** everyone whose multi-location entry has hours there. Their row shows only the hours of that branch (*Part of a multi-location transaction*); saving it changes that location and the total becomes the sum of the locations again. All companies lists every transaction whole. |
 | Payroll Register and payslips by branch | Payroll Batch Register → Co. / Branch: the employees of the branch plus the multi-location employees who worked there, each with only the pay earned in that branch, its share of the employer contributions and the deductions when it is the deduction source (*Branch part*). The branch totals of all branches add up to the *All* register. **Branch payslip** opens the payslip on that branch's tab. Print Payslips with a company / branch prints the branch payslip of those employees; with All, one consolidated payslip each (or split). Print and CSV export follow the same filter. |
 
+### Additions in version 21
+
+No database change (database version stays 18): copy the files and reload.
+
+| Request | Where in the app |
+|---|---|
+| A facility for the Super Admin to reset the password of every user who forgot it, with a temporary password to be changed at the next sign-in | Platform → **Password Resets** (also in the Platform group while inside a company): find any account of any company, or another Super Admin, by name, username or e-mail; the panel shows the company, role, e-mail, last sign-in and whether a temporary password is still pending. **Generate a temporary password** (12 letters and digits) or **Type the temporary password** (8+ characters, 10+ for a Super Admin), optional reason, optional e-mail to the user when the company has e-mail set up. The password is shown once with a Copy button; the old password stops working at once; at the next sign-in the user goes straight to My Account and must choose a new password, different from the temporary one. Every reset is written in the platform audit and in the company's audit trail (who, when, which account, reason; never the password; the e-mail log keeps the message with the password hidden). Shortcuts: **Reset password** on each user of a company (Companies → the company → Users of this company) and on User Access & Permissions while inside a company. The sign-in page now tells users who forgot their password to ask their administrator. |
+
 ### Additions in version 20
 
 Database version 18: open the site once (it upgrades by itself) or import `database/upgrade_to_v18_mysql55.sql` (MySQL 5.5; after the version 17 script if it was not imported yet).
@@ -642,5 +650,3 @@ suffix (`emp-0001.2`).
 cannot sign in, the code accepts no registration, the Super Admin keeps access, and activation restores
 everything. Permanent deletion of a company database is deliberately not offered in the application.
 
-#   i h r i s  
- 

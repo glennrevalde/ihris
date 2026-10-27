@@ -4525,6 +4525,40 @@ return [
 ],
 
 [
+'slug' => 'password_resets',
+'section' => 'system',
+'title' => 'Password resets by the Super Admin',
+'summary' => 'Give any account a temporary password when its user forgot the password; the user must choose a new one right after signing in.',
+'route' => false,
+'menu' => 'Platform > Password Resets (Super Admin only; also in the Platform group while inside a company)',
+'keywords' => 'forgot password reset password temporary password locked out cannot sign in super admin change password first sign in',
+'purpose' => 'When a user forgets the password, the platform Super Admin gives the account a temporary password. The old password stops working at once, and the user must replace the temporary one before doing anything else.',
+'fields' => [
+    ['Find an account', 'Part of the name, the username or the e-mail address. Company narrows the list to one company, or to the Super Admin accounts; Status shows active, inactive or waiting-for-approval accounts.'],
+    ['Generate a temporary password', 'Twelve random letters and digits, shown once after the reset (recommended).'],
+    ['Type the temporary password', 'One you agreed with the user, for example by phone: at least 8 characters (10 for a Super Admin account), not the username.'],
+    ['Reason', 'Optional. Kept in the audit trail of the platform and of the company.'],
+    ['Also e-mail the temporary password', 'Offered when the account has an e-mail address and the company has e-mail set up (System Settings, Mail).'],
+],
+'steps' => [
+    'Open Password Resets, type the name, username or e-mail of the user and press Find.',
+    'Pick the account in the list. The panel shows its company, role, e-mail, last sign-in and whether a temporary password is still waiting to be changed.',
+    'Choose Generate a temporary password, or Type the temporary password and enter it. Add a reason if you like.',
+    'Press Reset password and confirm. The temporary password is shown once, with a Copy button: give it to the user privately.',
+    'The user signs in with it and is taken straight to My Account, where they enter the temporary password as the current one and choose a new password.',
+],
+'rules' => [
+    'The temporary password is never stored in clear or written to a log; the e-mail log keeps the message with the password hidden.',
+    'Until it is changed, every page sends the user back to My Account. The new password must be different from the temporary one.',
+    'Inactive accounts and accounts waiting for approval can be reset, but they sign in only after they are activated or approved in the company.',
+    'Accounts reached by switching company (Users of more than one company) have no password of their own: reset the home account. Your own Super Admin password is changed on My Account.',
+    'The Reset password button on the company page (Companies, a company, Users of this company) and on User Access and Permissions (while inside a company) opens this page with the account already chosen.',
+    'A company administrator can still set a new password for an account of the company on User Accounts, with Require a new password at next sign-in ticked.',
+],
+'related' => ['users', 'user_access', 'account', 'multi_company_users'],
+],
+
+[
 'slug' => 'user_access',
 'section' => 'system',
 'title' => 'User Access and Permissions',

@@ -17,6 +17,10 @@ if (is_post()) {
                 flash('error', 'The new passwords do not match.');
                 redirect('sa_account');
             }
+            if ($sa['must_change_password'] && password_verify($new, $sa['password_hash'])) {
+                flash('error', 'Choose a new password that is different from the temporary one.');
+                redirect('sa_account');
+            }
             mupdate('super_admins', ['password_hash' => password_hash($new, PASSWORD_DEFAULT), 'must_change_password' => 0], 'id = ?', [$sa['id']]);
             master_audit('super_admin_password_change');
             flash('success', 'Password updated.');

@@ -248,14 +248,15 @@ page_header($co['name'], [
   <div class="card-head pad"><div><h2>Users of this company</h2><div class="sub">Read from <?= h($co['db_name']) ?>. The Company Owner manages them; you can too after entering the company.</div></div></div>
   <div class="table-wrap">
     <table class="table table-compact">
-      <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Employee</th><th>E-mail</th><th>Last sign-in</th><th>Status</th></tr></thead>
+      <thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Employee</th><th>E-mail</th><th>Last sign-in</th><th>Status</th><th class="actions"></th></tr></thead>
       <tbody>
       <?php foreach ($users as $u): ?>
         <tr class="<?= $u['is_active'] ? '' : 'row-muted' ?>"><td><strong><?= h($u['username']) ?></strong></td><td><?= h($u['full_name']) ?><?= (int)$u['id'] === (int)$co['owner_user_id'] ? '<br><small class="owner-tag">Company Owner</small>' : '' ?></td>
           <td><?= h($u['role_name'] ?? $u['role']) ?></td><td><?= h($u['employee_no']) ?></td><td class="small"><?= h($u['email']) ?></td><td class="small"><?= h(fmt_dt($u['last_login'])) ?></td>
-          <td><?= $u['reg_status'] === 'pending' ? badge('pending', 'Pending approval') : ($u['reg_status'] === 'rejected' ? badge('rejected', 'Rejected') : ($u['is_active'] ? badge('active') : badge('stopped', 'Inactive'))) ?></td></tr>
+          <td><?= $u['reg_status'] === 'pending' ? badge('pending', 'Pending approval') : ($u['reg_status'] === 'rejected' ? badge('rejected', 'Rejected') : ($u['is_active'] ? badge('active') : badge('stopped', 'Inactive'))) ?></td>
+          <td class="actions"><?php if (empty($u['linked_from'])): ?><a class="btn btn-xs" href="<?= h(url('sa_passwords', ['company' => $id, 'sel' => 'u' . $id . '-' . (int)$u['id']])) ?>">Reset password</a><?php endif; ?></td></tr>
       <?php endforeach; ?>
-      <?= $users ? '' : empty_row(7, 'No account.') ?>
+      <?= $users ? '' : empty_row(8, 'No account.') ?>
       </tbody>
     </table>
   </div>

@@ -2153,3 +2153,18 @@
     }).observe(document.body, { childList: true, subtree: true });
   }
 })();
+
+/* v21 Password Resets (Super Admin): the typed temporary password field shows only for "Type the temporary password". */
+(function () {
+  var radios = document.querySelectorAll('[data-pwr-mode]');
+  if (!radios.length) return;
+  var box = document.querySelector('[data-pwr-typed]');
+  var input = box ? box.querySelector('input') : null;
+  function sync() {
+    var typed = !!document.querySelector('[data-pwr-mode][value="typed"]:checked');
+    if (box) box.hidden = !typed;
+    if (input) { input.required = typed; if (!typed) input.value = ''; else input.focus(); }
+  }
+  Array.prototype.forEach.call(radios, function (r) { r.addEventListener('change', sync); });
+  sync();
+})();

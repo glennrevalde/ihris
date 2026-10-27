@@ -16,6 +16,8 @@ if (is_post()) {
             flash('error', 'The new password must be at least 8 characters.');
         } elseif ($new !== $conf) {
             flash('error', 'The new passwords do not match.');
+        } elseif ($u['must_change_password'] && password_verify($new, $row['password_hash'])) {
+            flash('error', 'Choose a new password that is different from the temporary one.');
         } else {
             update('users', ['password_hash' => password_hash($new, PASSWORD_DEFAULT), 'must_change_password' => 0], 'id = ?', [$u['id']]);
             audit('auth', 'password_change', 'users', $u['id']);

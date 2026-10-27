@@ -31,6 +31,7 @@ return [
     'sa_admins'          => ['super/admins.php', 'super'],
     'sa_account'         => ['super/account.php', 'super'],
     'sa_user_links'      => ['super/user_links.php', 'super'],
+    'sa_passwords'       => ['super/passwords.php', 'super'],
     'dashboard'          => ['dashboard.php', 'auth'],
     'account'            => ['account.php', 'auth'],
     'file'               => ['file.php', 'auth'],

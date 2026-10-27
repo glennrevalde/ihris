@@ -141,7 +141,12 @@ page_header('User Access & Permissions', [
               <div class="person-meta"><?= h($user['username']) ?><?= $user['employee_no'] ? ', ' . h($user['employee_no']) : '' ?><?= $isOwnerAcct ? ', Company Owner' : '' ?>
                 <?= $user['is_active'] ? '' : ', <span class="state-off">inactive</span>' ?></div></div>
           </div>
-          <a class="btn btn-sm" href="<?= h(url('users', ['edit' => $user['id']])) ?>">Edit the account</a>
+          <div class="btn-row">
+            <?php if (super_admin() && current_company_id() && empty($user['linked_from']) && empty($user['is_support'])): ?>
+              <a class="btn btn-sm" href="<?= h(url('sa_passwords', ['company' => current_company_id(), 'sel' => 'u' . current_company_id() . '-' . (int)$user['id']])) ?>">Reset password</a>
+            <?php endif; ?>
+            <a class="btn btn-sm" href="<?= h(url('users', ['edit' => $user['id']])) ?>">Edit the account</a>
+          </div>
         </div>
         <div class="form-grid ua-role">
           <div class="field"><label>Role</label>

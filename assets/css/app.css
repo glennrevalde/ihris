@@ -2160,3 +2160,34 @@ input.time-typed[readonly], input.time-typed[disabled] { background-image: none;
 @media (max-width: 1100px) { .lr-grid { grid-template-columns: 1fr; } .lr-calc { position: static; } }
 @media (max-width: 900px) { .lr-approve { grid-template-columns: 1fr; } .lr-list .list-nav { max-height: 320px; } .lr-cols { grid-template-columns: 1fr; } }
 @media (max-width: 520px) { .lr-dl { grid-template-columns: 1fr; gap: 2px 0; } .lr-dl dd { margin-bottom: 6px; } .lr-stamp { align-items: flex-start; text-align: left; } }
+
+/* ===== v21 Password Resets (Super Admin) ===== */
+.pwr-filters .pwr-q { flex: 1 1 260px; }
+.pwr-filters .pwr-q input { width: 100%; }
+.pwr-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.pwr-main > .card { margin: 0; }
+.pwr-flag { color: #b45309; font-weight: 600; }
+.list-nav .ln-main small.pwr-flag, .list-nav .ln-main small.state-off { font-size: 11px; }
+.pwr-kv { margin-top: 4px; }
+.pwr-form h2 { margin: 0 0 4px; }
+.pwr-form > p.muted { margin: 0 0 14px; }
+.pwr-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.pwr-typed input { font-family: var(--mono); letter-spacing: .06em; max-width: 340px; }
+.pwr-form .check { margin: 4px 0 10px; }
+.pwr-form .callout { margin: 10px 0 0; }
+.pwr-result { margin-bottom: 16px; border-left: 4px solid #10b981;
+  background: linear-gradient(180deg, #fff, #f3fbf7); box-shadow: 0 1px 0 #fff inset, 0 10px 24px -14px rgba(16, 120, 80, .35), var(--shadow, 0 1px 2px rgba(16, 24, 40, .06)); }
+.pwr-result h2 { margin: 0 0 2px; }
+.pwr-result p { margin: 0 0 10px; }
+.pwr-value { letter-spacing: .08em; user-select: all; }
+.pwr-notes { margin: 0; padding-left: 18px; line-height: 1.65; font-size: 13px; color: var(--text); }
+@media (max-width: 760px) {
+  .pwr-modes { grid-template-columns: minmax(0, 1fr); }
+  .pwr-typed input { max-width: none; }
+  .pwr-recent thead { display: none; }
+  .pwr-recent, .pwr-recent tbody, .pwr-recent tr, .pwr-recent td { display: block; width: 100%; }
+  .pwr-recent tr { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .pwr-recent td { border: 0; padding: 2px 0; }
+  .pwr-recent td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-size: 11.5px; }
+  .pwr-recent td.nowrap { white-space: normal; }
+}

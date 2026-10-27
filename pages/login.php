@@ -59,6 +59,7 @@ page_header('Sign in');
       <div class="field"><label for="pw">Password</label><input id="pw" type="password" name="password" required autocomplete="current-password"></div>
       <button class="btn btn-primary btn-block btn-lg">Sign in</button>
     </form>
+    <p class="auth-alt">Forgot your password? Ask your HR or system administrator to reset it. You will receive a temporary password and choose a new one when you sign in.</p>
     <?php if ($multi): ?>
       <p class="auth-alt">New employee? <a href="<?= url('register') ?>">Join your company with its Company Code</a></p>
     <?php endif; ?>

@@ -35,6 +35,7 @@ function icon(string $name): string
         'sliders'  => '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
         'bolt'     => '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
         'book'     => '<path d="M4 4.5A2.5 2.5 0 016.5 2H20v18H6.5A2.5 2.5 0 004 22z"/><path d="M4 17.5h16"/>',
+        'key'      => '<circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M16 7l3 3M14 9l2 2"/>',
     ][$name] ?? '<circle cx="12" cy="12" r="3"/>';
     return '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $p . '</svg>';
 }
@@ -53,6 +54,7 @@ function app_menu(): array
         ['label' => 'Platform'],
         ['page' => 'sa_dashboard', 'label' => 'Super Admin', 'icon' => 'shield', 'roles' => 'super'],
         ['page' => 'sa_companies', 'label' => 'Companies', 'icon' => 'building', 'roles' => 'super'],
+        ['page' => 'sa_passwords', 'label' => 'Password Resets', 'icon' => 'key', 'roles' => 'super'],
     ] : [];
     return array_merge($platform, company_menu());
 }
@@ -233,6 +235,7 @@ function super_menu(): array
         ['page' => 'sa_dashboard', 'label' => 'Dashboard', 'icon' => 'home', 'roles' => 'super'],
         ['page' => 'sa_companies', 'label' => 'Companies', 'icon' => 'building', 'roles' => 'super'],
         ['page' => 'sa_user_links', 'label' => 'Multi-company Users', 'icon' => 'users', 'roles' => 'super'],
+        ['page' => 'sa_passwords', 'label' => 'Password Resets', 'icon' => 'key', 'roles' => 'super'],
         ['page' => 'sa_company_new', 'label' => 'Create Company', 'icon' => 'plus', 'roles' => 'super'],
         ['page' => 'sa_logs', 'label' => 'Audit & Provisioning Logs', 'icon' => 'list', 'roles' => 'super'],
         ['label' => 'Administration'],
@@ -304,7 +307,7 @@ function page_header(string $title, array $opt = []): void
 <meta name="theme-color" content="#0c1533">
 <title><?= h($title) ?> - <?= h($appName) ?></title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233f5ee8'/%3E%3Ctext x='16' y='22' font-family='Segoe UI,Arial' font-size='15' font-weight='700' fill='white' text-anchor='middle'%3E<?= rawurlencode(app_mark()) ?>%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/css/app.css?v=26">
+<link rel="stylesheet" href="assets/css/app.css?v=27">
 </head>
 <body class="<?= $u ? 'has-sidebar' : 'guest' ?>">
 <?php if ($u): ?>
@@ -428,7 +431,7 @@ function page_footer(): void
 <?php else: ?>
 </div>
 <?php endif; ?>
-<script src="assets/js/app.js?v=26"></script>
+<script src="assets/js/app.js?v=27"></script>
 </body>
 </html>
 <?php
@@ -443,7 +446,7 @@ function print_header(string $title, bool $landscape = false, string $size = '')
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?></title>
-<link rel="stylesheet" href="assets/css/app.css?v=26">
+<link rel="stylesheet" href="assets/css/app.css?v=27">
 <?php if ($landscape): ?><style>@page { size: <?= $size === 'legal' ? 'legal ' : '' ?>landscape; }</style><?php endif; ?>
 </head>
 <body class="print-body">
