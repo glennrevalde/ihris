@@ -788,33 +788,49 @@ function bio_logs_stage(array $dev, array $logs, string $source, string $info = 
 
 /**
  * Download the attendance log of a configured device into the import staging area.
- * Returns ['read' => n, 'staged' => n, 'duplicates' => n, 'info' => '...', 'batch' => id].
+ * v22: $since / $until (Date From / Date To, YYYY-MM-DD or a date-time) keep only the logs of those dates; the device
+ * log is cleared after the download only when every log read was inside the dates (none is lost).
+ * Returns ['read' => n, 'staged' => n, 'duplicates' => n, 'info' => '...', 'batch' => id, 'outside' => n, 'cleared' => bool].
  */
-function bio_device_download(array $dev, ?string $since = null, bool $clearAfter = false): array
+function bio_device_download(array $dev, ?string $since = null, bool $clearAfter = false, ?string $until = null): array
 {
+    $from = $since ? str_replace('T', ' ', $since) : null;
+    if ($from && strlen($from) === 10) {
+        $from .= ' 00:00:00';
+    }
+    $to = $until ? str_replace('T', ' ', $until) : null;
+    if ($to && strlen($to) === 10) {
+        $to .= ' 23:59:59';
+    }
+    $inRange = fn($l) => (!$from || $l['time'] >= $from) && (!$to || $l['time'] <= $to);
     $zk = zk_client($dev);
     $info = '';
+    $cleared = false;
+    $outside = 0;
     try {
         $zk->connect();
         $info = zk_info_text($zk->info());
         $zk->disableDevice();
         $logs = $zk->attendance();
-        if ($clearAfter && $logs) {
+        $outside = count(array_filter($logs, fn($l) => !$inRange($l)));
+        if ($clearAfter && $logs && !$outside) {
             $zk->clearAttendance();
+            $cleared = true;
         }
         $zk->enableDevice();
     } finally {
         $zk->disconnect();
     }
-    if ($since) {
-        $since = str_replace('T', ' ', $since);
-        $logs = array_values(array_filter($logs, fn($l) => $l['time'] >= $since));
+    $read = count($logs);
+    if ($from || $to) {
+        $logs = array_values(array_filter($logs, $inRange));
     }
     $st = bio_logs_stage($dev, $logs, 'device', $info);
     update('bio_devices', ['last_sync_at' => now(), 'device_info' => mb_substr($info, 0, 255),
-        'last_status' => mb_substr(sprintf('%d log(s) read, %d staged, %d duplicate(s).', count($logs), $st['staged'], $st['duplicates']), 0, 255)], 'id = ?', [$dev['id']]);
-    audit('ams', 'device_download', 'bio_devices', (int)$dev['id'], ['read' => count($logs), 'staged' => $st['staged'], 'method' => $dev['conn_method'] ?? 'native']);
-    return array_merge($st, ['info' => $info]);
+        'last_status' => mb_substr(sprintf('%d log(s) read, %d in the dates, %d staged, %d duplicate(s).', $read, count($logs), $st['staged'], $st['duplicates']), 0, 255)], 'id = ?', [$dev['id']]);
+    audit('ams', 'device_download', 'bio_devices', (int)$dev['id'], ['read' => $read, 'in_dates' => count($logs), 'staged' => $st['staged'], 'from' => $from, 'to' => $to,
+        'cleared' => $cleared, 'method' => $dev['conn_method'] ?? 'native']);
+    return array_merge($st, ['info' => $info, 'outside' => $outside, 'cleared' => $cleared, 'read_device' => $read]);
 }
 
 /** Map the ZK "state" byte to a punch type. */

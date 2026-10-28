@@ -7,6 +7,9 @@
  * Payroll Batch Register II (route pay_register2): the same register with the Others of the earnings and
  * the Others of the deductions always shown in detail, one column per item consolidated in them (for
  * example Position Allowance, Meal Subsidy, Cooperative Contribution), on screen, in print and in the CSV.
+ *
+ * v22 Report "Totals / Summary only" (both registers): one line per Co. / Branch, Department, Employee group
+ * and / or Employee type of the payroll period (any combination), with the usual columns and the grand total.
  */
 $route = (string)get('p') === 'pay_register2' ? 'pay_register2' : 'pay_register';
 $regFixed = $route === 'pay_register2';
@@ -29,6 +32,11 @@ $f = ['org_unit_id' => id_list(get('org_unit_id')), 'branch_id' => id_list(get('
 $regBranches = pairs("SELECT id, CONCAT(COALESCE(branch_code, code), ' — ', name) FROM branches WHERE is_active = 1 ORDER BY company_code, branch_code");
 $oneBranch = count($f['branch_id']) === 1 ? (int)$f['branch_id'][0] : 0;
 $group = get('group') === '1';
+// v22: Totals / Summary only, by Co. / Branch, Department, Employee group and / or Employee type
+$sumView = get('view') === 'summary';
+$sumBy = register_summary_by(get('by', [])) ?: ['unit'];
+$viewKeep = $sumView ? ['view' => 'summary', 'by' => $sumBy] : [];
+$sumDims = register_summary_dims();
 
 if (is_post()) {
     verify_csrf();
@@ -53,22 +61,27 @@ $data = register_data($runId, $f);
 $run = $data['run'];
 $rows = $data['rows'];
 $tot = $data['totals'];
+$summary = $sumView ? register_summary($data, $sumBy) : null;
+$sumText = $sumView ? implode(', ', array_map(fn($d) => $sumDims[$d][0], $sumBy)) : '';
 
 if (get('export') === 'csv') {
-    [$head, $lines] = register_csv($data, (string)get('expand', ''));
-    csv_download(($regFixed ? 'payroll_register_ii_' : 'payroll_register_') . $run['run_no'] . '.csv', $head, $lines);
+    [$head, $lines] = $summary ? register_summary_csv($data, $summary, (string)get('expand', '')) : register_csv($data, (string)get('expand', ''));
+    csv_download(($regFixed ? 'payroll_register_ii_' : 'payroll_register_') . ($summary ? 'summary_' : '') . $run['run_no'] . '.csv', $head, $lines);
     exit;
 }
 if (get('print')) {
     audit('payroll', 'register_print', 'payroll_runs', $runId);
-    print_header(($regFixed ? 'Payroll Register II — ' : 'Payroll Register — ') . $run['run_no'], true, 'legal');
+    print_header(($regFixed ? 'Payroll Register II' : 'Payroll Register') . ($summary ? ' Summary' : '') . ' — ' . $run['run_no'], true, 'legal');
     $lh = $oneBranch ? row('SELECT * FROM branches WHERE id = ?', [$oneBranch]) : null;
     echo company_letterhead($lh ?: row('SELECT * FROM branches WHERE is_default = 1 OR id = 1 ORDER BY is_default DESC LIMIT 1'));
-    echo '<h1>Payroll Register' . ($regFixed ? ' II' : '') . ($lh ? ' — ' . h($lh['name']) : '') . '</h1>';
+    echo '<h1>Payroll Register' . ($regFixed ? ' II' : '') . ($summary ? ' Summary' : '') . ($lh ? ' — ' . h($lh['name']) : '') . '</h1>';
     echo '<div class="doc-meta"><div><strong>' . h($run['run_no']) . '</strong>, ' . h(RUN_TYPES[$run['run_type']] ?? $run['run_type']) . ', ' . h($run['pay_group_name']) . '</div>'
         . '<div>Period: ' . h(fmt_date($run['period_start'])) . ' – ' . h(fmt_date($run['period_end'])) . ', Pay date: ' . h(fmt_date($run['pay_date'])) . '</div>'
         . '<div>Printed: ' . h(fmt_dt(now())) . '</div></div>';
     echo report_selection_html($f, [], true);   // department, company / branch, group, type, find
+    if ($summary) {
+        echo '<div class="doc-meta"><div><strong>Totals by:</strong> ' . h($sumText) . '</div></div>';
+    }
     include __DIR__ . '/_register_table.php';
     echo signatory_block();
     print_footer();
@@ -87,10 +100,10 @@ page_header($regTitle, [
     'subtitle' => h($run['run_no']) . ', ' . h($run['pay_group_name']) . ', ' . h(fmt_date($run['period_start'])) . ' – ' . h(fmt_date($run['period_end']))
         . ', pay date ' . h(fmt_date($run['pay_date'])),
     'wide' => true,
-    'actions' => ($regFixed ? '<a class="btn" href="' . url('pay_register', array_filter(array_merge(['run_id' => $runId], $f))) . '">Payroll Batch Register</a>'
-        : '<a class="btn" href="' . url('pay_register2', array_filter(array_merge(['run_id' => $runId], $f))) . '">Register II (Others in detail)</a>')
-        . '<a class="btn" target="_blank" data-expand-link href="' . url($route, array_filter(array_merge(['run_id' => $runId, 'print' => 1, 'group' => $group ? 1 : null, 'expand' => get('expand') ?: null], $f))) . '">Print register</a>'
-        . '<a class="btn" data-expand-link href="' . url($route, array_filter(array_merge(['run_id' => $runId, 'export' => 'csv', 'expand' => get('expand') ?: null], $f))) . '">Export CSV</a>',
+    'actions' => ($regFixed ? '<a class="btn" href="' . url('pay_register', array_filter(array_merge(['run_id' => $runId], $f, $viewKeep))) . '">Payroll Batch Register</a>'
+        : '<a class="btn" href="' . url('pay_register2', array_filter(array_merge(['run_id' => $runId], $f, $viewKeep))) . '">Register II (Others in detail)</a>')
+        . '<a class="btn" target="_blank" data-expand-link href="' . url($route, array_filter(array_merge(['run_id' => $runId, 'print' => 1, 'group' => $group && !$sumView ? 1 : null, 'expand' => get('expand') ?: null], $f, $viewKeep))) . '">Print ' . ($sumView ? 'summary' : 'register') . '</a>'
+        . '<a class="btn" data-expand-link href="' . url($route, array_filter(array_merge(['run_id' => $runId, 'export' => 'csv', 'expand' => get('expand') ?: null], $f, $viewKeep))) . '">Export CSV</a>',
 ]);
 ?>
 <form method="get" class="card filters">
@@ -101,7 +114,22 @@ page_header($regTitle, [
   <?= multi_pick('employee_group_id', 'Employee group', emp_group_options(), $f['employee_group_id'], 'All groups') ?>
   <label>Employee type<select name="employee_type_id"><?= options(pairs("SELECT id, CONCAT(code, ' — ', name) FROM emp_types ORDER BY code"), $f['employee_type_id'], 'All types') ?></select></label>
   <label class="grow">Find<input type="search" name="q" value="<?= h($f['q']) ?>" placeholder="Employee name or number"></label>
-  <label class="check" style="margin-top:18px"><input type="checkbox" name="group" value="1" <?= checked($group) ?>> Sub-total by department</label>
+  <?php if (!$sumView): ?><label class="check" style="margin-top:18px"><input type="checkbox" name="group" value="1" <?= checked($group) ?>> Sub-total by department</label><?php endif; ?>
+  <fieldset class="seg-field reg-view">
+    <legend>Report</legend>
+    <span class="seg">
+      <label><input type="radio" name="view" value="" <?= checked(!$sumView) ?> data-autosubmit><span>Per employee</span></label>
+      <label><input type="radio" name="view" value="summary" <?= checked($sumView) ?> data-autosubmit><span>Totals / Summary only</span></label>
+    </span>
+  </fieldset>
+  <?php if ($sumView): ?>
+  <fieldset class="seg-field reg-by">
+    <legend>Totals by</legend>
+    <span class="reg-by-list">
+      <?php foreach ($sumDims as $k => $d): ?><label class="check"><input type="checkbox" name="by[]" value="<?= h($k) ?>" <?= checked(in_array($k, $sumBy, true)) ?> data-autosubmit> <?= h($d[0]) ?></label><?php endforeach; ?>
+    </span>
+  </fieldset>
+  <?php endif; ?>
   <button class="btn btn-primary">Apply</button>
 </form>
 <div class="rpt-selection-bar"><?= report_selection_html($f) ?></div>
@@ -129,6 +157,10 @@ endif; ?>
   <span class="badge badge-<?= $run['status'] === 'finalized' ? 'green' : ($run['status'] === 'computed' ? 'amber' : 'gray') ?>"><?= h(label($run['status'])) ?></span>
   <?php $empN = count(array_unique(array_map(fn($r) => (int)$r['item']['employee_id'], $rows))); ?>
   <span class="muted small"><?= $empN ?> employee(s)<?= count($rows) > $empN ? ', ' . count($rows) . ' lines (one per company / branch worked)' : '' ?></span>
+  <?php if ($sumView): ?>
+  <span class="sep"></span>
+  <span class="muted small">Totals by <?= h($sumText) ?>: <?= count(array_filter($summary['lines'], fn($l) => !$l['sub'])) ?> line(s).</span>
+  <?php else: ?>
   <span class="sep"></span>
   <span class="reg-sel" id="regSel" data-empty="Click an employee row, then open a screen for that person"><?= $selEmp ? 'Selected: ' . h($selEmp['name']) : 'Click an employee row, then open a screen for that person' ?></span>
   <span class="sep"></span>
@@ -139,6 +171,7 @@ endif; ?>
   <a class="btn btn-sm" href="<?= h(url_back('trans_payments')) ?>" data-emp-link="emp">Open trans. payment</a>
   <a class="btn btn-sm" href="<?= h(url_back('payroll_run', ['id' => $runId])) ?>" data-emp-link="emp">Payroll run</a>
   <a class="btn btn-sm" href="<?= h(url_back('pay_inquiry')) ?>" data-emp-link="emp" data-needs-emp>Payroll inquiry</a>
+  <?php endif; ?>
   <span class="spacer"></span>
   <?php if (in_array($run['status'], ['draft', 'computed'], true)):
       // v15: the Payroll Computation form opens with the filters of this register pre-selected (department,

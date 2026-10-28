@@ -5,6 +5,19 @@
  *  - summarized attendance from Excel (.xlsx) / CSV using the standard template
  */
 
+/** v22: layouts of an import configuration (Import Log Configuration). */
+const IMPORT_LAYOUTS = ['delimited' => 'delimited', 'fixed' => 'fixed width', 'report' => 'attendance report'];
+
+/** Spreadsheet column letter of a 0-based column (0 = A). */
+function import_col_letter(int $c): string
+{
+    $s = '';
+    for ($c++; $c > 0; $c = intdiv($c - 1, 26)) {
+        $s = chr(65 + ($c - 1) % 26) . $s;
+    }
+    return $s;
+}
+
 function import_split_line(string $line, string $delimiter): array
 {
     $line = rtrim($line, "\r\n");
@@ -403,6 +416,27 @@ function staging_insert(array $rows, string $source, ?int $batchId = null): arra
     }
     $branchByCode = pairs('SELECT COALESCE(branch_code, code), id FROM branches');
     $st = ['staged' => 0, 'duplicates' => 0, 'errors' => 0, 'unmatched' => 0];
+    // v22: a terminal that records every punch with the same state (all "Out", or all "In") does not tell In from Out:
+    // when two or more punches of one employee-day, an hour or more apart, all carry the same In or Out type, they are
+    // placed by the shift code like untyped punches (07:58 Out + 17:05 Out = Time in + Time out)
+    $days = [];
+    foreach ($rows as $i => $r) {
+        if (!empty($r['log_time']) && empty($r['error'])) {
+            $days[(string)($r['bio_id'] ?? '') . '|' . substr((string)$r['log_time'], 0, 10)][] = $i;
+        }
+    }
+    foreach ($days as $idx) {
+        if (count($idx) < 2) {
+            continue;
+        }
+        $types = array_unique(array_map(fn($i) => (string)($rows[$i]['punch_type'] ?? 'unknown'), $idx));
+        $times = array_map(fn($i) => strtotime((string)$rows[$i]['log_time']), $idx);
+        if (count($types) === 1 && in_array($types[0], ['in', 'out'], true) && max($times) - min($times) >= 3600) {
+            foreach ($idx as $i) {
+                $rows[$i]['punch_type'] = 'unknown';
+            }
+        }
+    }
     // untyped punches are placed by the shift code (2, 4 or 6 logs a day) before they are staged
     $rows = import_classify_untyped($rows, fn($bio) => $bioMap[ltrim($bio, '0') ?: $bio] ?? ($bioMap[$bio] ?? null));
     $ins = db()->prepare('INSERT INTO log_staging (batch_id, line_no, log_time, bio_id, employee_id, punch_type, co_code, branch_code, branch_id, device_id, source, raw_text, remarks, status, created_by)
@@ -426,7 +460,19 @@ function staging_insert(array $rows, string $source, ?int $batchId = null): arra
             $status = 'duplicate';
             $remark = 'Already in the attendance logs';
             $st['duplicates']++;
-        } elseif (val("SELECT COUNT(*) FROM log_staging WHERE bio_id = ? AND log_time = ? AND status = 'pending'", [$bio, $r['log_time']])) {
+        } elseif ($batchId && val("SELECT COUNT(*) FROM log_staging WHERE bio_id = ? AND log_time = ? AND status = 'pending' AND batch_id = ?", [$bio, $r['log_time'], $batchId])) {
+            $status = 'duplicate';
+            $remark = 'Already staged';
+            $st['duplicates']++;
+        } elseif ($batchId && val("SELECT COUNT(*) FROM log_staging WHERE bio_id = ? AND log_time = ? AND status = 'pending'", [$bio, $r['log_time']])) {
+            // v22: still pending from an earlier download or file: it joins this batch, so Post logs of this batch posts it
+            // (before, it stayed behind in the earlier batch and those days never reached the Attendance Entry)
+            // it takes the type read now (with the other punches of the day it is better placed than when it came alone)
+            q("UPDATE log_staging SET batch_id = ?, punch_type = ? WHERE bio_id = ? AND log_time = ? AND status = 'pending'", [$batchId, $r['punch_type'] ?? 'unknown', $bio, $r['log_time']]);
+            $status = 'duplicate';
+            $remark = 'Already staged: moved into this batch';
+            $st['staged']++;
+        } elseif (!$batchId && val("SELECT COUNT(*) FROM log_staging WHERE bio_id = ? AND log_time = ? AND status = 'pending'", [$bio, $r['log_time']])) {
             $status = 'duplicate';
             $remark = 'Already staged';
             $st['duplicates']++;
@@ -440,20 +486,33 @@ function staging_insert(array $rows, string $source, ?int $batchId = null): arra
     return $st;
 }
 
-/** Post staged rows to the attendance logs and re-process the affected days. */
-function staging_post(?int $batchId = null, array $ids = []): array
+/**
+ * Post staged rows to the attendance logs and re-process the affected days.
+ * v22: $range [from, to] (YYYY-MM-DD) posts only the logs of those dates; $batchIds posts several batches (the files of
+ * one upload) at once. The pending logs that a later download of the same punches marked "Already staged" are posted
+ * with the batch, so no day stays behind.
+ */
+function staging_post(?int $batchId = null, array $ids = [], ?array $range = null, array $batchIds = []): array
 {
-    $where = ["status = 'pending'"];
+    @set_time_limit(600);   // recomputing many employee-days takes time on a busy server
+    $where = ["s.status = 'pending'"];
     $params = [];
-    if ($batchId) {
-        $where[] = 'batch_id = ?';
-        $params[] = $batchId;
+    $batches = array_values(array_filter(array_map('intval', $batchId ? [$batchId] : $batchIds)));
+    if ($batches) {
+        $in = implode(',', $batches);
+        $where[] = "(s.batch_id IN ($in) OR EXISTS (SELECT 1 FROM log_staging d WHERE d.batch_id IN ($in) AND d.status = 'duplicate'
+                     AND d.bio_id = s.bio_id AND d.log_time = s.log_time AND d.remarks LIKE 'Already staged%'))";
     }
     if ($ids) {
-        $where[] = 'id IN (' . implode(',', array_map('intval', $ids)) . ')';
+        $where[] = 's.id IN (' . implode(',', array_map('intval', $ids)) . ')';
     }
-    $rows = rows('SELECT * FROM log_staging WHERE ' . implode(' AND ', $where) . ' ORDER BY log_time LIMIT 20000', $params);
-    $st = ['posted' => 0, 'duplicates' => 0, 'errors' => 0];
+    if ($range) {
+        $where[] = 's.log_time BETWEEN ? AND ?';
+        $params[] = $range[0] . ' 00:00:00';
+        $params[] = $range[1] . ' 23:59:59';
+    }
+    $rows = rows('SELECT s.* FROM log_staging s WHERE ' . implode(' AND ', $where) . ' ORDER BY s.log_time LIMIT 50000', $params);
+    $st = ['posted' => 0, 'duplicates' => 0, 'errors' => 0, 'days' => 0, 'locked' => 0];
     $touched = [];
     $ins = db()->prepare('INSERT IGNORE INTO attendance_logs (employee_id, bio_id, log_time, punch_type, source, branch_id, batch_id, device_id) VALUES (?,?,?,?,?,?,?,?)');
     foreach ($rows as $r) {
@@ -465,6 +524,8 @@ function staging_post(?int $batchId = null, array $ids = []): array
         if (val('SELECT COUNT(*) FROM attendance_logs WHERE employee_id = ? AND log_time = ?', [$r['employee_id'], $r['log_time']])) {
             update('log_staging', ['status' => 'duplicate', 'remarks' => 'Already in the attendance logs'], 'id = ?', [$r['id']]);
             $st['duplicates']++;
+            // the day is computed again all the same (an earlier posting may have been cut short)
+            $touched[(int)$r['employee_id']][substr((string)$r['log_time'], 0, 10)] = true;
             continue;
         }
         $ins->execute([$r['employee_id'], $r['bio_id'], $r['log_time'], $r['punch_type'] ?: 'unknown',
@@ -473,13 +534,31 @@ function staging_post(?int $batchId = null, array $ids = []): array
         $st['posted']++;
         $touched[(int)$r['employee_id']][substr((string)$r['log_time'], 0, 10)] = true;
     }
+    // the logs of the selection already in the attendance logs (re-staged from the log table or downloaded again): their
+    // days are computed again too, so posting again repairs a day that shows nothing although its logs are there
+    $dupWhere = $where;
+    $dupWhere[0] = "s.status = 'duplicate' AND s.remarks = 'Already in the attendance logs' AND s.employee_id IS NOT NULL";
+    foreach (rows('SELECT DISTINCT s.employee_id, DATE(s.log_time) AS d FROM log_staging s WHERE ' . implode(' AND ', $dupWhere) . ' LIMIT 20000', $params) as $x) {
+        $touched[(int)$x['employee_id']][(string)$x['d']] = true;
+    }
     foreach ($touched as $emp => $dates) {
+        // each day once, with the day before (a night shift that ends on the day of the log)
+        $set = [];
         foreach (array_keys($dates) as $d) {
+            $set[$d] = true;
+            $set[add_days($d, -1)] = true;
+        }
+        $e = att_employee((int)$emp);
+        foreach (array_keys($set) as $d) {
+            if ($e && dtr_locked($e, $d)) {
+                $st['locked']++;
+                continue;
+            }
             process_dtr((int)$emp, $d);
-            process_dtr((int)$emp, add_days($d, -1));
+            $st['days']++;
         }
     }
-    audit('ams', 'staging_post', 'log_staging', $batchId, $st);
+    audit('ams', 'staging_post', 'log_staging', $batchId, $st + ['from' => $range[0] ?? null, 'to' => $range[1] ?? null, 'batches' => $batches]);
     return $st;
 }
 
@@ -527,14 +606,18 @@ function staging_from_log_table(string $from, string $to, ?int $branchId = null,
  */
 function parse_log_file(string $path, array $profile, int $limit = 0, ?array $range = null, int &$outside = 0): array
 {
-    $fixed = ($profile['layout'] ?? 'delimited') === 'fixed';
-    if (!$fixed) {
+    $layout = $profile['layout'] ?? 'delimited';
+    if ($layout === 'report') {
+        // v22: an attendance record report (Excel), e.g. JJM Logs: one block per employee, the punches under the day numbers
+        return import_min_gap(parse_report_file($path, $profile, $range, $outside), (int)($profile['min_gap'] ?? 0), $limit);
+    }
+    if ($layout !== 'fixed') {
         $out = [];
-        foreach (parse_biometric_file($path, $profile, $limit, $range, $outside) as $r) {
+        foreach (parse_biometric_file($path, $profile, 0, $range, $outside) as $r) {
             $out[] = ['line_no' => $r['line'], 'bio_id' => $r['bio_id'], 'log_time' => $r['time'], 'punch_type' => $r['type'] === 'unknown' ? 'unknown' : $r['type'],
                 'device_id' => $r['device'], 'raw_text' => $r['raw'], 'error' => $r['error']];
         }
-        return $out;
+        return import_min_gap($out, (int)($profile['min_gap'] ?? 0), $limit);
     }
     $cut = function (string $line, $start, $width) {
         $start = (int)$start;
@@ -579,10 +662,216 @@ function parse_log_file(string $path, array $profile, int $limit = 0, ?array $ra
         }
         $rows[] = ['line_no' => $n, 'bio_id' => $bio, 'log_time' => $stamp, 'punch_type' => $type, 'device_id' => $dev ?: null,
             'raw_text' => $line, 'error' => $err];
-        if ($limit && count($rows) >= $limit) {
+        if ($limit && !(int)($profile['min_gap'] ?? 0) && count($rows) >= $limit) {
             break;
         }
     }
     fclose($fh);
-    return $rows;
+    return import_min_gap($rows, (int)($profile['min_gap'] ?? 0), $limit);
+}
+
+/**
+ * v22 "Minimum minutes between logs" of the import configuration: a punch of the same employee and day that
+ * follows the previous one by less than that many minutes is a repeated tap on the terminal (07:57 and 07:58)
+ * and is not staged; the first one is kept. 0 = keep every punch. $limit cuts the result (test import).
+ */
+function import_min_gap(array $rows, int $minutes, int $limit = 0): array
+{
+    if ($minutes > 0) {
+        $order = array_keys($rows);
+        usort($order, fn($a, $b) => strcmp((string)$rows[$a]['bio_id'], (string)$rows[$b]['bio_id']) ?: strcmp((string)$rows[$a]['log_time'], (string)$rows[$b]['log_time']) ?: ($a <=> $b));
+        $last = [];
+        $drop = [];
+        foreach ($order as $i) {
+            $r = $rows[$i];
+            if (!empty($r['error']) || empty($r['log_time'])) {
+                continue;
+            }
+            $k = $r['bio_id'] . '|' . substr((string)$r['log_time'], 0, 10);
+            $t = strtotime((string)$r['log_time']);
+            if (isset($last[$k]) && $t - $last[$k] < $minutes * 60) {
+                $drop[$i] = true;
+                continue;
+            }
+            $last[$k] = $t;
+        }
+        $rows = array_values(array_diff_key($rows, $drop));
+    }
+    return $limit ? array_slice($rows, 0, $limit) : $rows;
+}
+
+/**
+ * v22 Read an attendance record report (layout "report"), such as the JJM Logs: an Excel sheet with one block
+ * per employee:
+ *
+ *   Attendance date:2026-10-15~2026-10-28            <- period label: gives the year and month of the days
+ *   User ID: | 4 | Name: | ATON, JOSEFINA Y. | ...  <- ID label, the ID in the next cell
+ *   15 | 16 | 17 | 18 | 19 | ...                     <- day numbers (Day-number row = 1 row below the ID row)
+ *   07:03\n17:09 | 07:11\n17:17 | ...               <- the punches of each day under its number (First time row = 2)
+ *   ...   | 17:12 |                                  <- more punches of the day continue below, up to the next ID row
+ *
+ * Every time found in a day's cells is one punch (no In / Out on the report: the shift code places them).
+ */
+function parse_report_file(string $path, array $profile, ?array $range = null, int &$outside = 0): array
+{
+    $grid = grid_read_file($path, max(0, (int)($profile['rp_sheet'] ?? 1) - 1));
+    $norm = fn($v) => mb_strtolower(preg_replace('/\s+/u', '', (string)$v));
+    $idL = $norm(($profile['rp_id_label'] ?? '') ?: 'User ID:');
+    $nameL = $norm($profile['rp_name_label'] ?? '');
+    $perL = $norm($profile['rp_period_label'] ?? '');
+    $dayOff = max(1, (int)($profile['rp_day_row'] ?? 1));
+    $timeOff = max(1, (int)($profile['rp_time_row'] ?? 2));
+    $dateFmt = trim((string)($profile['rp_date_format'] ?? '')) ?: 'Y-m-d';
+    // the value after a label: in the same cell after the label, else the next filled cell to the right
+    $after = function (array $row, int $col, string $label): string {
+        $txt = trim((string)$row[$col]);
+        // "User ID: 12" in one cell: the text after the label
+        $re = '/^' . implode('\\s*', array_map(fn($ch) => preg_quote($ch, '/'), preg_split('//u', $label, -1, PREG_SPLIT_NO_EMPTY))) . '\\s*(.*)$/isu';
+        if (preg_match($re, $txt, $m) && trim($m[1]) !== '') {
+            return trim($m[1]);
+        }
+        foreach ($row as $c => $v) {
+            if ($c > $col && trim((string)$v) !== '') {
+                return trim((string)$v);
+            }
+        }
+        return '';
+    };
+    // the period of the report
+    $start = $end = null;
+    if ($perL !== '') {
+        foreach ($grid as $row) {
+            foreach ($row as $v) {
+                if (strpos($norm($v), $perL) !== 0) {
+                    continue;
+                }
+                preg_match_all('#\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}#', (string)$v, $m);
+                $ds = [];
+                foreach ($m[0] as $tok) {
+                    $dt = DateTime::createFromFormat('!' . $dateFmt, $tok) ?: (strtotime($tok) ? new DateTime($tok) : null);
+                    if ($dt) {
+                        $ds[] = $dt->format('Y-m-d');
+                    }
+                }
+                if ($ds) {
+                    $start = $ds[0];
+                    $end = $ds[1] ?? $ds[0];
+                    break 2;
+                }
+            }
+        }
+    }
+    if (!$start) {
+        // no period on the report: the dates given for the staging (else this month)
+        $start = $range[0] ?? date('Y-m-01');
+        $end = $range[1] ?? date('Y-m-t');
+    }
+    if ($end < $start || days_between($start, $end) > 370) {
+        $end = add_days($start, 62);
+    }
+    $dates = date_range($start, $end);
+    // the employee blocks
+    $blocks = [];
+    foreach ($grid as $r => $row) {
+        foreach ($row as $c => $v) {
+            if (strpos($norm($v), $idL) === 0) {
+                $id = $after($row, $c, $idL);
+                $name = '';
+                if ($nameL !== '') {
+                    foreach ($row as $c2 => $v2) {
+                        if ($c2 !== $c && strpos($norm($v2), $nameL) === 0) {
+                            $name = $after($row, $c2, $nameL);
+                        }
+                    }
+                }
+                $blocks[] = ['row' => (int)$r, 'id' => preg_replace('/\.0+$/', '', $id), 'name' => $name];
+                break;
+            }
+        }
+    }
+    if (!$blocks) {
+        throw new RuntimeException('No "' . (($profile['rp_id_label'] ?? '') ?: 'User ID:') . '" label was found in the file: check the Employee ID label of the import configuration, or choose another configuration.');
+    }
+    $isDay = fn($v) => (bool)preg_match('/^\s*(\d{1,2})(\.0+)?\s*$/', (string)$v, $mm) && (int)$mm[1] >= 1 && (int)$mm[1] <= 31;
+    $rowsOut = [];
+    $lastRow = $grid ? max(array_keys($grid)) : 0;
+    foreach ($blocks as $bi => $b) {
+        $next = $blocks[$bi + 1]['row'] ?? $lastRow + 1;
+        // the day numbers: the configured row, else the nearest row below the ID with day numbers
+        $dayRowNo = $b['row'] + $dayOff;
+        $count = fn($rn) => count(array_filter($grid[$rn] ?? [], $isDay));
+        if ($count($dayRowNo) < 1) {
+            for ($rn = $b['row'] + 1; $rn < min($next, $b['row'] + 4); $rn++) {
+                if ($count($rn) >= 2) {
+                    $dayRowNo = $rn;
+                    break;
+                }
+            }
+        }
+        $dayRow = $grid[$dayRowNo] ?? [];
+        ksort($dayRow);
+        // day number -> date, column by column through the period (a period over two months goes on to the 1st)
+        $colDate = [];
+        $ptr = 0;
+        foreach ($dayRow as $c => $v) {
+            if (!$isDay($v)) {
+                continue;
+            }
+            $d = (int)$v;
+            while ($ptr < count($dates) && (int)substr($dates[$ptr], 8, 2) !== $d) {
+                $ptr++;
+            }
+            if ($ptr < count($dates)) {
+                $colDate[$c] = $dates[$ptr++];
+            }
+        }
+        $punches = [];
+        for ($rn = max($dayRowNo + 1, $b['row'] + $timeOff); $rn < $next; $rn++) {
+            foreach ($grid[$rn] ?? [] as $c => $v) {
+                if (!isset($colDate[$c])) {
+                    continue;
+                }
+                $v = (string)$v;
+                if (is_numeric($v) && (float)$v > 0 && (float)$v < 1) {
+                    // an Excel time (fraction of a day)
+                    $sec = (int)round((float)$v * 86400);
+                    $punches[$colDate[$c]][] = [sprintf('%02d:%02d:00', intdiv($sec, 3600) % 24, intdiv($sec % 3600, 60)), $rn + 1, (int)$c];
+                    continue;
+                }
+                preg_match_all('/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp])?\.?[Mm]?\.?/', $v, $m, PREG_SET_ORDER);
+                foreach ($m as $t) {
+                    $h = (int)$t[1];
+                    $ap = strtolower($t[4] ?? '');
+                    if ($ap === 'p' && $h < 12) {
+                        $h += 12;
+                    } elseif ($ap === 'a' && $h === 12) {
+                        $h = 0;
+                    }
+                    if ($h > 23 || (int)$t[2] > 59) {
+                        continue;
+                    }
+                    $punches[$colDate[$c]][] = [sprintf('%02d:%02d:%02d', $h, (int)$t[2], (int)($t[3] ?? 0)), $rn + 1, (int)$c];
+                }
+            }
+        }
+        ksort($punches);
+        foreach ($punches as $date => $list) {
+            usort($list, fn($a, $b2) => strcmp($a[0], $b2[0]));
+            $seen = [];
+            foreach ($list as [$time, $line, $col]) {
+                if (isset($seen[$time])) {
+                    continue;
+                }
+                $seen[$time] = true;
+                if ($range && ($date < $range[0] || $date > $range[1])) {
+                    $outside++;
+                    continue;
+                }
+                $rowsOut[] = ['line_no' => $line, 'bio_id' => ltrim($b['id'], '0') ?: $b['id'], 'log_time' => $date . ' ' . $time, 'punch_type' => 'unknown',
+                    'device_id' => null, 'raw_text' => trim('ID ' . $b['id'] . ($b['name'] !== '' ? ' ' . $b['name'] : '') . ', ' . $date . ' ' . substr($time, 0, 5) . ' (cell ' . import_col_letter($col) . $line . ')'),
+                    'error' => $b['id'] === '' ? 'Missing employee ID next to the ID label' : null];
+            }
+        }
+    }
+    return $rowsOut;
 }

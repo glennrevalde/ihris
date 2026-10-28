@@ -97,8 +97,18 @@ if (is_post()) {
             audit('ams', 'bio_device_test', 'bio_devices', $id, ['ok' => true, 'users' => count($users)]);
             flash('success', 'Connected to ' . $rec['name'] . ': ' . $text . '. ' . count($users) . ' user(s) registered in the terminal.');
         } elseif ($action === 'download') {
-            $st = bio_device_download($rec, post('since') ?: null, (bool)post('clear_after'));
-            flash('success', sprintf('%s: %d log(s) read, %d staged, %d duplicate(s). Review and post them below.', $rec['name'], $st['read'], $st['staged'], $st['duplicates']));
+            // v22: Date From / Date To of the logs to download
+            $dFrom = (string)post('date_from');
+            $dTo = (string)post('date_to');
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dFrom) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dTo) || $dTo < $dFrom) {
+                throw new RuntimeException('Give the Date from and Date to of the logs to download, the To date on or after the From date.');
+            }
+            $st = bio_device_download($rec, $dFrom, (bool)post('clear_after'), $dTo);
+            flash('success', sprintf('%s: %d log(s) on the device, %d of %s to %s: %d staged, %d duplicate(s). Review and post them below.', $rec['name'], $st['read_device'], $st['read'],
+                fmt_date($dFrom), fmt_date($dTo), $st['staged'], $st['duplicates']));
+            if (post('clear_after') && !$st['cleared'] && $st['outside']) {
+                flash('warning', 'The device log was not cleared: ' . number_format($st['outside']) . ' log(s) on the device are outside these dates and would have been lost.');
+            }
             redirect('import_logs', ['batch_id' => $st['batch']]);
         }
     } catch (ZkError $e) {
@@ -190,7 +200,8 @@ page_header('Biometric Device Setup', [
       <?= csrf_field() ?><input type="hidden" name="id" value="<?= $id ?>">
       <p class="label-line">Download logs</p>
       <div class="form-grid cols-2 tight">
-        <div class="field wide"><label>Only logs from</label><input type="datetime-local" name="since" value="<?= h(date('Y-m-01\T00:00')) ?>"></div>
+        <div class="field"><label>Date from</label><input type="date" name="date_from" value="<?= h(date('Y-m-01')) ?>" required></div>
+        <div class="field"><label>Date to</label><input type="date" name="date_to" value="<?= h(today()) ?>" required></div>
         <div class="field wide"><label class="check"><input type="checkbox" name="clear_after" value="1"> Clear the terminal log after the download</label></div>
       </div>
       <button class="btn btn-primary" name="_action" value="download">Download logs</button>

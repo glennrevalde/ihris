@@ -161,7 +161,7 @@ if (is_post()) {
                     }
                 }
                 if (!$files) {
-                    throw new RuntimeException('Choose one or more log files first (.dat, .txt, .log, .csv or .tsv).');
+                    throw new RuntimeException('Choose one or more log files first (.dat, .txt, .log, .csv, .tsv, or an Excel attendance report .xls / .xlsx).');
                 }
                 $from = (string)post('date_from');
                 $to = (string)post('date_to');
@@ -185,12 +185,17 @@ if (is_post()) {
                 $tot = ['read' => 0, 'staged' => 0, 'duplicates' => 0, 'errors' => 0, 'outside' => 0];
                 foreach ($files as &$f) {
                     $ext = strtolower((string)pathinfo($f['name'], PATHINFO_EXTENSION));
-                    if (!in_array($ext, ['dat', 'txt', 'log', 'csv', 'tsv'], true)) {
-                        throw new RuntimeException($f['name'] . ': only .dat, .txt, .log, .csv and .tsv files can be read here. Use Excel / CSV Import for the summarized template.');
+                    if (!in_array($ext, ['dat', 'txt', 'log', 'csv', 'tsv', 'xls', 'xlsx', 'htm', 'html'], true)) {
+                        throw new RuntimeException($f['name'] . ': only .dat, .txt, .log, .csv, .tsv and the Excel attendance reports (.xls, .xlsx) can be read here. Use Excel / CSV Import for the summarized template.');
                     }
                     $f['profile'] = $profilesById[(int)($perProfile[$f['i']] ?? 0)] ?? ($profilesById[$defProfile] ?? null);
                     if (!$f['profile']) {
                         throw new RuntimeException('Select the import configuration of ' . $f['name'] . '.');
+                    }
+                    // v22: an Excel report (JJM Logs) is read only with a report configuration, and a report configuration only reads reports
+                    $isReport = ($f['profile']['layout'] ?? '') === 'report';
+                    if (in_array($ext, ['xls', 'xlsx'], true) && !$isReport) {
+                        throw new RuntimeException($f['name'] . ' is an Excel file: choose a configuration of the layout "Attendance record report", such as JJM Logs.');
                     }
                     $f['typed'] = ($f['profile']['layout'] === 'fixed' ? (int)$f['profile']['fw_type_width'] > 0 : (bool)$f['profile']['col_punch']) && trim((string)$f['profile']['punch_map']) !== '';
                 }
@@ -241,22 +246,33 @@ if (is_post()) {
                 if (!$dev) {
                     throw new RuntimeException('Select a biometric device.');
                 }
-                $st = bio_device_download($dev, post('since') ?: null, (bool)post('clear_after'));
-                flash('success', sprintf('%s: %d log(s) read, %d staged, %d duplicate(s).', $dev['name'], $st['read'], $st['staged'], $st['duplicates']));
+                // v22: Date From / Date To of the logs to download
+                $dFrom = (string)post('date_from');
+                $dTo = (string)post('date_to');
+                if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dFrom) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dTo) || $dTo < $dFrom) {
+                    throw new RuntimeException('Give the Date from and Date to of the logs to download, the To date on or after the From date.');
+                }
+                $st = bio_device_download($dev, $dFrom, (bool)post('clear_after'), $dTo);
+                flash('success', sprintf('%s: %d log(s) on the device, %d of %s to %s: %d staged, %d duplicate(s).', $dev['name'], $st['read_device'], $st['read'],
+                    fmt_date($dFrom), fmt_date($dTo), $st['staged'], $st['duplicates']));
+                if (post('clear_after') && !$st['cleared'] && $st['outside']) {
+                    flash('warning', 'The device log was not cleared: ' . number_format($st['outside']) . ' log(s) on the device are outside these dates and would have been lost.');
+                }
                 redirect('import_logs', ['batch_id' => $st['batch']]);
                 // no break
             case 'post':
-                if ($batchIds && !$batchId && !post('ids')) {   // v19: the files of a multi-file upload are posted together
-                    $st = ['posted' => 0, 'duplicates' => 0, 'errors' => 0];
-                    foreach ($batchIds as $bid) {
-                        foreach (staging_post($bid, []) as $k => $v) {
-                            $st[$k] = ($st[$k] ?? 0) + (is_numeric($v) ? $v : 0);
-                        }
-                    }
-                } else {
-                    $st = staging_post($batchId ?: null, array_map('intval', (array)post('ids', [])));
+                // v22: only the logs of Post from / Post to are posted (of the batch chosen, or of every batch)
+                $pFrom = (string)post('post_from');
+                $pTo = (string)post('post_to');
+                if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $pFrom) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $pTo) || $pTo < $pFrom) {
+                    throw new RuntimeException('Give the dates of the logs to post (Post from and to), the To date on or after the From date.');
                 }
-                flash('success', sprintf('%d log(s) posted to the attendance records, %d duplicate(s), %d error(s). The affected days were recomputed.', $st['posted'], $st['duplicates'], $st['errors']));
+                $st = staging_post($batchId ?: null, array_map('intval', (array)post('ids', [])), [$pFrom, $pTo], $batchId ? [] : $batchIds);
+                flash($st['posted'] || $st['duplicates'] || $st['days'] ? 'success' : 'warning', sprintf('%s to %s: %d log(s) posted to the attendance records, %d already posted, %d error(s); %d employee-day(s) recomputed.',
+                    fmt_date($pFrom), fmt_date($pTo), $st['posted'], $st['duplicates'], $st['errors'], $st['days']));
+                if ($st['locked']) {
+                    flash('warning', $st['locked'] . ' employee-day(s) belong to a closed attendance period and were not recomputed: re-open the period (Attendance Transaction Closing) and post again.');
+                }
                 break;
             case 'delete':
                 $ids = array_map('intval', (array)post('ids', []));
@@ -346,6 +362,10 @@ $pager = function () use ($pg, $pages, $listKeep, $total, $shownFrom, $shownTo) 
     return $h . '<a class="btn btn-sm' . ($pg >= $pages ? ' disabled' : '') . '" href="' . $u(min($pages, $pg + 1)) . '">Next &rarr;</a><span class="muted small">' . number_format($shownFrom) . '–' . number_format($shownTo) . ' of ' . number_format($total) . '</span></nav>';
 };
 $stats = staging_stats($batchId ?: null);
+// v22: the dates of the pending logs of this selection fill Post from / to (only those dates are posted)
+$pw = $batchId ? ' AND batch_id = ' . $batchId : ($batchIds ? ' AND batch_id IN (' . implode(',', $batchIds) . ')' : '');
+$pr = row("SELECT MIN(DATE(log_time)) AS a, MAX(DATE(log_time)) AS b FROM log_staging WHERE status = 'pending'" . $pw);
+$postRange = [$pr['a'] ?? date('Y-m-01'), $pr['b'] ?? today()];
 $batches = rows('SELECT b.*, u.full_name AS user_name, (SELECT COUNT(*) FROM log_staging s WHERE s.batch_id = b.id) AS staged
                  FROM import_batches b LEFT JOIN users u ON u.id = b.uploaded_by
                  WHERE b.batch_type IN ("biometric","device","log_table") ORDER BY b.id DESC LIMIT 20');
@@ -371,11 +391,11 @@ page_header('Customized Import Attendance Log', [
 <div class="grid grid-3">
   <div class="card stage-card">
     <h2>From file</h2>
-    <p class="muted small">TAB / CSV / fixed-width .dat, .txt or .log exported by the terminals. Choose one, two, three or more files at once, e.g. the logs of the devices of Company A, B and C.</p>
+    <p class="muted small">TAB / CSV / fixed-width .dat, .txt or .log exported by the terminals, or an Excel attendance report (.xls, e.g. JJM Logs). Choose one, two, three or more files at once, e.g. the logs of the devices of Company A, B and C.</p>
     <form method="post" enctype="multipart/form-data" id="stageForm">
       <?= csrf_field() ?><input type="hidden" name="_action" value="file">
       <div class="field"><label>Import configuration</label><select name="profile_id" required>
-        <?php foreach ($profiles as $p): ?><option value="<?= (int)$p['id'] ?>" <?= $p['is_default'] ? 'selected' : '' ?>><?= h($p['name']) ?> (<?= h($p['layout']) ?>)</option><?php endforeach; ?>
+        <?php foreach ($profiles as $p): ?><option value="<?= (int)$p['id'] ?>" data-layout="<?= h($p['layout']) ?>" <?= $p['is_default'] ? 'selected' : '' ?>><?= h($p['name']) ?> (<?= h(IMPORT_LAYOUTS[$p['layout']] ?? $p['layout']) ?>)</option><?php endforeach; ?>
       </select></div>
       <div class="field"><label>Company / branch of the device</label><select name="branch_id"><?= options($branchOpts, null, 'From the configuration') ?></select></div>
       <div class="field"><label for="stageCut">Cut-off</label><select id="stageCut">
@@ -387,7 +407,7 @@ page_header('Customized Import Attendance Log', [
         <div class="field"><label for="stageTo">Date to</label><input type="date" name="date_to" id="stageTo" value="<?= h($defCut['period_end'] ?? date('Y-m-t')) ?>" required></div>
       </div>
       <small class="help">Only the logs of these dates are staged; the other lines of the file (an undated backup of the device) are skipped and counted.</small>
-      <div class="field"><label for="stageFiles">Log files</label><input type="file" name="logfile[]" id="stageFiles" accept=".dat,.txt,.log,.csv,.tsv" multiple required></div>
+      <div class="field"><label for="stageFiles">Log files</label><input type="file" name="logfile[]" id="stageFiles" accept=".dat,.txt,.log,.csv,.tsv,.xls,.xlsx" multiple required></div>
       <div class="stage-files" id="stageList" hidden>
         <div class="stage-files-head"><span>File</span><span>Import configuration</span><span>Company / branch</span></div>
         <div class="stage-files-body"></div>
@@ -422,8 +442,13 @@ page_header('Customized Import Attendance Log', [
         <?php endforeach; ?>
         <?php if (!$devices): ?><option value="">No device configured</option><?php endif; ?>
       </select></div>
-      <div class="field"><label>Only logs from</label><input type="datetime-local" name="since" value="<?= h(date('Y-m-01\T00:00')) ?>"></div>
+      <div class="form-grid stage-dates">
+        <div class="field"><label for="devFrom">Date from</label><input type="date" name="date_from" id="devFrom" value="<?= h($defCut['period_start'] ?? date('Y-m-01')) ?>" required></div>
+        <div class="field"><label for="devTo">Date to</label><input type="date" name="date_to" id="devTo" value="<?= h(min(today(), $defCut['period_end'] ?? date('Y-m-t'))) ?>" required></div>
+      </div>
+      <small class="help">Only the logs of these dates are downloaded into the staging area.</small>
       <label class="check"><input type="checkbox" name="clear_after" value="1"> Clear the device log after a successful download</label>
+      <small class="help">The device is cleared only when every log on it is inside the dates.</small>
       <div class="form-actions"><button class="btn"<?= $devices ? '' : ' disabled' ?>>Download logs</button>
         <a class="btn" href="<?= url('bio_devices') ?>">Device setup</a></div>
     </form>
@@ -459,7 +484,11 @@ page_header('Customized Import Attendance Log', [
     <span class="label">Staged logs</span>
     <span class="muted small"><?= $total ? number_format($shownFrom) . '–' . number_format($shownTo) . ' of ' . number_format($total) . ' log(s)' : 'No log' ?><?= $batchIds ? ', ' . count($batchIds) . ' file(s) of the last upload' : '' ?><?= $view === 'days' && $total > 20000 ? '. The first 20,000 are arranged: narrow the selection with Find or the batch.' : '' ?></span>
     <span class="spacer"></span>
-    <button class="btn btn-primary" name="_action" value="post" data-confirm="Post the pending logs to the attendance records?">Post logs</button>
+    <span class="post-range">
+      <label for="postFrom">Post from</label><input type="date" name="post_from" id="postFrom" value="<?= h($postRange[0]) ?>" required>
+      <label for="postTo">to</label><input type="date" name="post_to" id="postTo" value="<?= h($postRange[1]) ?>" required>
+    </span>
+    <button class="btn btn-primary" name="_action" value="post" data-confirm="Post the pending logs of these dates to the attendance records?">Post logs</button>
     <button class="btn" name="_action" value="delete" data-confirm="Delete the ticked staged logs?">Delete</button>
     <button class="btn btn-danger-outline" name="_action" value="delete_all" data-confirm="Delete every staged log of this selection? Posted attendance records are not affected.">Delete all logs</button>
     <a class="btn" href="<?= h(url('import_logs', ['status' => 'error'])) ?>">View log error</a>
@@ -605,6 +634,7 @@ page_header('Customized Import Attendance Log', [
       var t = o.textContent.toLowerCase();
       if (!pick && /attlog|\.dat$/.test(n) && t.indexOf('zkteco') >= 0) pick = o.value;
       if (!pick && /\.csv$/.test(n) && t.indexOf('csv') >= 0) pick = o.value;
+      if (!pick && /\.xlsx?$/.test(n) && o.getAttribute('data-layout') === 'report') pick = o.value;
     });
     return pick;
   };
@@ -612,6 +642,7 @@ page_header('Customized Import Attendance Log', [
     body.innerHTML = '';
     var list = Array.prototype.slice.call(files.files || []);
     box.hidden = list.length < 2;
+    if (list.length === 1 && guess(list[0].name)) tplProfile.value = guess(list[0].name);   // v22: an .xls report picks its configuration
     list.forEach(function (f, i) {
       var row = document.createElement('div');
       row.className = 'stage-file';

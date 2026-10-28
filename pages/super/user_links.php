@@ -5,8 +5,11 @@
  * in the other company with a role of that company (never one with every permission), no password of
  * its own and no sign-in of its own. The other company manages that account's role and permissions on
  * its User Accounts page. A link can be deactivated, activated again or removed here.
+ * v22: Edit opens the access of a linked account: its role and employee record in the other company and the
+ * employees it sees there (companies / branches and departments), without entering that company.
  */
 $homeCid = (int)get('home', 0);
+$editId = (int)get('edit', 0);
 $homeUid = (int)get('user', 0);
 $targetCid = (int)get('target', 0);
 
@@ -94,6 +97,54 @@ if (is_post()) {
             flash('success', $mem['username'] . ' of ' . $hc['name'] . ' can now switch to ' . $tc['name'] . ' (account ' . $uname . ', role ' . $roleName . '). The company switcher appears in the top bar at the next page.');
             redirect('sa_user_links');
         }
+        if ($act === 'edit') {
+            // v22: role, employee record and employee assignment of the linked account, written in the other company
+            $l = mrow('SELECT * FROM company_user_links WHERE id = ?', [(int)post('id')]);
+            $tc = $l ? company_by_id((int)$l['company_id']) : null;
+            if (!$l || !ul_company_ok($tc)) {
+                throw new RuntimeException('Link not found, or the company database cannot be opened.');
+            }
+            $roleId = (int)post('role_id');
+            $res = with_company_db($tc['db_name'], function () use ($l, $roleId, $tc) {
+                db_upgrade();
+                $u = row('SELECT * FROM users WHERE id = ? AND linked_from IS NOT NULL', [(int)$l['user_id']]);
+                if (!$u) {
+                    throw new RuntimeException('The linked account no longer exists in ' . $tc['name'] . '.');
+                }
+                $role = row("SELECT * FROM roles WHERE id = ? AND status = 'active'", [$roleId]);
+                if (!$role || ((int)$role['is_super'] && (int)$role['id'] !== (int)$u['role_id'])) {
+                    throw new RuntimeException('Choose an active role of ' . $tc['name'] . ' (roles with every permission are not given here).');
+                }
+                $empId = (int)post('employee_id') ?: null;
+                if ($empId && !(int)val('SELECT COUNT(*) FROM employees WHERE id = ?', [$empId])) {
+                    $empId = null;
+                }
+                $old = ['role' => (string)val('SELECT name FROM roles WHERE id = ?', [(int)$u['role_id']]), 'employee_id' => $u['employee_id'],
+                    'scopes' => rows('SELECT scope_type, ref_id FROM user_scopes WHERE user_id = ? ORDER BY scope_type, ref_id', [(int)$u['id']]),
+                    'all_branches' => (int)($u['scope_all_branches'] ?? 1), 'all_units' => (int)($u['scope_all_units'] ?? 1)];
+                update('users', ['role_id' => (int)$role['id'], 'role' => $role['base_role'] ?: 'employee', 'employee_id' => $empId], 'id = ?', [(int)$u['id']]);
+                if (mig_column_exists('users', 'scope_all_branches')) {
+                    q('DELETE FROM user_scopes WHERE user_id = ?', [(int)$u['id']]);
+                    foreach (array_unique(array_map('intval', (array)post('branches', []))) as $b) {
+                        if ($b > 0) {
+                            insert('user_scopes', ['user_id' => (int)$u['id'], 'scope_type' => 'branch', 'ref_id' => $b]);
+                        }
+                    }
+                    foreach (array_unique(array_map('intval', (array)post('units', []))) as $o) {
+                        if ($o > 0) {
+                            insert('user_scopes', ['user_id' => (int)$u['id'], 'scope_type' => 'org_unit', 'ref_id' => $o]);
+                        }
+                    }
+                    update('users', ['scope_all_branches' => post('scope_all_branches') ? 1 : 0, 'scope_all_units' => post('scope_all_units') ? 1 : 0], 'id = ?', [(int)$u['id']]);
+                }
+                login_audit($tc, ['id' => (int)$u['id'], 'username' => 'platform'], 'linked_account_access', ['username' => $u['username'], 'before' => $old,
+                    'role' => $role['name'], 'employee_id' => $empId, 'all_branches' => post('scope_all_branches') ? 1 : 0, 'all_units' => post('scope_all_units') ? 1 : 0]);
+                return [$u['username'], $role['name']];
+            });
+            master_audit('user_link_edited', (int)$l['company_id'], ['username' => $l['username'], 'linked_account' => $res[0], 'role' => $res[1]]);
+            flash('success', 'Access of ' . $l['username'] . ' in ' . $tc['name'] . ' saved: role ' . $res[1] . '.');
+            redirect('sa_user_links');
+        }
         if (in_array($act, ['deactivate', 'activate', 'remove'], true)) {
             $l = mrow('SELECT * FROM company_user_links WHERE id = ?', [(int)post('id')]);
             if (!$l) {
@@ -117,7 +168,8 @@ if (is_post()) {
         }
     } catch (RuntimeException $e) {
         flash('error', $e->getMessage());
-        redirect('sa_user_links', array_filter(['home' => (int)post('home_company_id'), 'user' => (int)post('home_user_id'), 'target' => (int)post('company_id')]));
+        redirect('sa_user_links', array_filter(['home' => (int)post('home_company_id'), 'user' => (int)post('home_user_id'), 'target' => (int)post('company_id'),
+            'edit' => post('_action') === 'edit' ? (int)post('id') : null]));
     } catch (PDOException $e) {
         flash('error', 'The company database could not be updated: ' . $e->getMessage());
     }
@@ -161,6 +213,42 @@ foreach ($byCo as $cid => $ids) {
     } catch (Throwable $e) {
     }
 }
+// v22: the access of one linked account, read from the company that owns it
+$edit = null;
+$editErr = null;
+if ($editId) {
+    $el = mrow('SELECT l.*, hc.name AS home_name, tc.name AS company_name FROM company_user_links l LEFT JOIN companies hc ON hc.id = l.home_company_id
+                LEFT JOIN companies tc ON tc.id = l.company_id WHERE l.id = ?', [$editId]);
+    $ec = $el ? company_by_id((int)$el['company_id']) : null;
+    if (!$el || !ul_company_ok($ec)) {
+        $editErr = 'This link cannot be edited: the link or the database of its company is not available.';
+    } else {
+        try {
+            $edit = with_company_db($ec['db_name'], function () use ($el) {
+                $u = row('SELECT u.*, r.name AS role_name, r.is_super AS role_super FROM users u LEFT JOIN roles r ON r.id = u.role_id WHERE u.id = ?', [(int)$el['user_id']]);
+                if (!$u) {
+                    return null;
+                }
+                $sc = ['branch' => [], 'org_unit' => []];
+                foreach (rows('SELECT scope_type, ref_id FROM user_scopes WHERE user_id = ?', [(int)$u['id']]) as $x) {
+                    $sc[$x['scope_type']][] = (int)$x['ref_id'];
+                }
+                $roles = pairs("SELECT id, name FROM roles WHERE status = 'active' AND (is_super = 0 OR id = ?) ORDER BY is_system DESC, name", [(int)$u['role_id']]);
+                return ['user' => $u, 'scopes' => $sc, 'roles' => $roles, 'flags' => mig_column_exists('users', 'scope_all_branches'),
+                    'emps' => pairs("SELECT id, CONCAT(last_name, ', ', first_name, ' — ', employee_no) FROM employees WHERE status = 'active' OR id = ? ORDER BY last_name, first_name", [(int)$u['employee_id']]),
+                    'branches' => rows("SELECT id, CONCAT(COALESCE(branch_code, code), ' — ', name) AS label FROM branches WHERE is_active = 1 ORDER BY company_code, branch_code, code"),
+                    'units' => rows('SELECT id, name AS label FROM org_units WHERE is_active = 1 ORDER BY name')];
+            });
+            if ($edit) {
+                $edit['link'] = $el;
+            } else {
+                $editErr = 'The linked account no longer exists in ' . $el['company_name'] . '.';
+            }
+        } catch (Throwable $e) {
+            $editErr = 'The database of ' . $el['company_name'] . ' cannot be opened: ' . $e->getMessage();
+        }
+    }
+}
 page_header('Multi-company Users', [
     'subtitle' => 'Users who switch between companies with one sign-in, without being a Super Admin. In each company they work with that company\'s role and permissions only.',
 ]);
@@ -195,6 +283,44 @@ page_header('Multi-company Users', [
     <?php endif; ?>
   </div>
 
+  <?php if ($editErr): ?><div class="callout warn"><?= h($editErr) ?></div><?php endif; ?>
+  <?php if ($edit): $eu = $edit['user']; $el = $edit['link']; ?>
+  <form method="post" class="card link-edit" id="linkEdit">
+    <?= csrf_field() ?><input type="hidden" name="_action" value="edit"><input type="hidden" name="id" value="<?= (int)$el['id'] ?>">
+    <div class="card-head"><div><h2>Access of <?= h($el['username']) ?> in <?= h($el['company_name']) ?></h2>
+      <div class="sub">Signs in as <?= h($el['username']) ?> of <?= h($el['home_name']) ?>; works in <?= h($el['company_name']) ?> as <strong><?= h($eu['username']) ?></strong>. Saved in the database of <?= h($el['company_name']) ?>.</div></div>
+      <a class="btn btn-sm" href="<?= url('sa_user_links') ?>">Close</a></div>
+    <div class="form-grid cols-2">
+      <div class="field"><label>Role in <?= h($el['company_name']) ?></label><select name="role_id" required><?= options($edit['roles'], (int)$eu['role_id'], 'Choose the role') ?></select>
+        <?php if (!empty($eu['role_super'])): ?><span class="help">The company gave this account a role with every permission; it can be kept, not given here.</span><?php endif; ?></div>
+      <div class="field"><label>Employee record in <?= h($el['company_name']) ?></label><select name="employee_id"><?= options($edit['emps'], $eu['employee_id'] ? (int)$eu['employee_id'] : null, '— none —') ?></select>
+        <span class="help">For self-service and approvals in that company.</span></div>
+    </div>
+    <?php if ($edit['flags']): ?>
+    <h3 class="link-edit-h">Employees this account sees in <?= h($el['company_name']) ?></h3>
+    <p class="muted small">Nothing ticked on both sides = no employee. Companies / branches only = their employees; departments only = those departments; both = the departments inside the companies.</p>
+    <div class="grid grid-2 link-scopes">
+      <div class="scope-panel">
+        <label class="check scope-all"><input type="checkbox" name="scope_all_branches" value="1" data-scope-all="lb" <?= checked(!empty($eu['scope_all_branches'])) ?>> <strong>All companies / branches</strong></label>
+        <div class="checks scroll-checks" data-scope-list="lb">
+          <?php foreach ($edit['branches'] as $b): ?><label class="check"><input type="checkbox" name="branches[]" value="<?= (int)$b['id'] ?>" <?= checked(in_array((int)$b['id'], $edit['scopes']['branch'], true)) ?>> <?= h($b['label']) ?></label><?php endforeach; ?>
+          <?= $edit['branches'] ? '' : '<p class="muted small">No company / branch.</p>' ?>
+        </div>
+      </div>
+      <div class="scope-panel">
+        <label class="check scope-all"><input type="checkbox" name="scope_all_units" value="1" data-scope-all="lu" <?= checked(!empty($eu['scope_all_units'])) ?>> <strong>All departments</strong></label>
+        <div class="checks scroll-checks" data-scope-list="lu">
+          <?php foreach ($edit['units'] as $o): ?><label class="check"><input type="checkbox" name="units[]" value="<?= (int)$o['id'] ?>" <?= checked(in_array((int)$o['id'], $edit['scopes']['org_unit'], true)) ?>> <?= h($o['label']) ?></label><?php endforeach; ?>
+          <?= $edit['units'] ? '' : '<p class="muted small">No department.</p>' ?>
+        </div>
+      </div>
+    </div>
+    <?php endif; ?>
+    <div class="form-actions"><button class="btn btn-primary">Save access</button><a class="btn" href="<?= url('sa_user_links') ?>">Cancel</a>
+      <span class="muted small">The custom Allow / Deny permissions stay with <?= h($el['company_name']) ?> (User Access &amp; Permissions inside the company).</span></div>
+  </form>
+  <?php endif; ?>
+
   <div class="card flush">
     <div class="card-head pad"><div><h2>Linked accounts</h2><div class="sub"><?= count($links) ?> link(s). The company switcher appears in the top bar of these users.</div></div></div>
     <div class="table-wrap">
@@ -202,7 +328,7 @@ page_header('Multi-company Users', [
         <thead><tr><th>Signs in as</th><th>Can switch to</th><th>Account there</th><th>Role there</th><th>Status</th><th class="actions"></th></tr></thead>
         <tbody>
         <?php foreach ($links as $l): $a = $acct[$l['company_id'] . ':' . $l['user_id']] ?? null; $act = $l['status'] === 'active' && $a && $a['is_active']; ?>
-          <tr class="<?= $act ? '' : 'row-muted' ?>">
+          <tr class="<?= $act ? '' : 'row-muted' ?><?= (int)$l['id'] === $editId ? ' row-selected' : '' ?>">
             <td><strong><?= h($l['username']) ?></strong><br><small class="muted"><?= h($l['home_name'] ?: 'Company #' . $l['home_company_id']) ?></small></td>
             <td><?= h($l['company_name'] ?: 'Company #' . $l['company_id']) ?><?= $l['company_status'] && $l['company_status'] !== 'active' ? '<br><small class="muted">company ' . h(strtolower(COMPANY_STATUSES[$l['company_status']] ?? $l['company_status'])) . '</small>' : '' ?></td>
             <td><?= h($a['username'] ?? '—') ?><?= $a && $a['last_login'] ? '<br><small class="muted">last used ' . h(fmt_dt($a['last_login'])) . '</small>' : '' ?></td>
@@ -210,6 +336,7 @@ page_header('Multi-company Users', [
             <td><?= $l['status'] !== 'active' ? badge('stopped', 'Inactive') : ($a && !$a['is_active'] ? badge('stopped', 'Account inactive') : badge('active')) ?></td>
             <td class="actions">
               <form method="post" class="inline"><?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$l['id'] ?>">
+                <a class="btn btn-sm" href="<?= h(url('sa_user_links', ['edit' => $l['id']])) ?>#linkEdit">Edit</a>
                 <?php if ($l['status'] === 'active'): ?><button class="btn btn-sm" name="_action" value="deactivate">Deactivate</button>
                 <?php else: ?><button class="btn btn-sm" name="_action" value="activate">Activate</button><?php endif; ?>
                 <button class="btn btn-sm btn-danger-outline" name="_action" value="remove" data-confirm="Remove this link? The account in <?= h($l['company_name']) ?> is deactivated and kept for its history.">Remove</button>

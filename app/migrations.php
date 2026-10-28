@@ -15,7 +15,7 @@
  */
 require_once __DIR__ . '/engine/paytrans.php';
 
-const DB_VERSION = 18;
+const DB_VERSION = 19;
 
 function db_version(): int
 {
@@ -1201,10 +1201,37 @@ function migration_v18(): array
     ]];
 }
 
+/**
+ * Version 19 (v22 requests): import of an attendance record report in Excel (layout "report", e.g. the JJM Logs:
+ * one block per employee, the punches under the day numbers) and, for every import configuration, the minimum
+ * minutes between two logs of the same employee-day. Adds the "JJM Logs" configuration.
+ */
+function migration_v19(): array
+{
+    return ['tables' => [], 'columns' => [
+        ['import_profiles', 'rp_id_label', "VARCHAR(40) NULL COMMENT 'Report layout: label of the employee ID (the ID is the next cell)'"],
+        ['import_profiles', 'rp_name_label', "VARCHAR(40) NULL COMMENT 'Report layout: label of the employee name'"],
+        ['import_profiles', 'rp_period_label', "VARCHAR(40) NULL COMMENT 'Report layout: label of the period (gives the year and month)'"],
+        ['import_profiles', 'rp_date_format', "VARCHAR(20) NULL COMMENT 'Report layout: date format of the period'"],
+        ['import_profiles', 'rp_day_row', "TINYINT NOT NULL DEFAULT 1 COMMENT 'Report layout: rows below the ID row with the day numbers'"],
+        ['import_profiles', 'rp_time_row', "TINYINT NOT NULL DEFAULT 2 COMMENT 'Report layout: rows below the ID row of the first times'"],
+        ['import_profiles', 'rp_sheet', "TINYINT NOT NULL DEFAULT 1 COMMENT 'Report layout: worksheet number'"],
+        ['import_profiles', 'min_gap', "SMALLINT NOT NULL DEFAULT 0 COMMENT 'Minimum minutes between two logs of the same employee-day (0 = keep all)'"],
+    ], 'modify' => [
+        ['import_profiles', 'layout', "ENUM('delimited','fixed','report') NOT NULL DEFAULT 'delimited' COMMENT 'Column layout of the log file'", 'report'],
+    ], 'settings' => [], 'seeds' => [], 'data' => [
+        "INSERT INTO import_profiles (name, layout, delimiter, has_header, col_bio_id, datetime_format, notes, rp_id_label, rp_name_label, rp_period_label, rp_date_format,
+                                      rp_day_row, rp_time_row, rp_sheet, min_gap, is_default, sort_order)
+         SELECT 'JJM Logs', 'report', 'tab', 0, 1, 'Y-m-d H:i:s', 'Employee Attendance Record (.xls): User ID / Name / Department, the day numbers, then the times of each day',
+                'User ID:', 'Name:', 'Attendance date:', 'Y-m-d', 1, 2, 1, 5, 0, m.so
+         FROM (SELECT COALESCE(MAX(sort_order), 0) + 1 AS so, SUM(name = 'JJM Logs') AS n FROM import_profiles) m WHERE COALESCE(m.n, 0) = 0",
+    ]];
+}
+
 /** Every upgrade step in order: version => definitions. */
 function migrations_all(): array
 {
-    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18'];
+    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19'];
 }
 
 function mig_table_exists(string $t): bool
@@ -1372,7 +1399,8 @@ function db_upgrade_sql(int $version = DB_VERSION): string
         '15' => 'employment status Resigned / Terminated / Retired, final pay item edits, penalty reset days, 13th month basis, company events',
         '16' => 'Cancel Calculation of the final pay, day-off of the shift on per-date shift changes',
         '17' => 'order of the import configurations',
-        '18' => 'Employee Loan / Deduction Request and its approval'][(string)$version] ?? '';
+        '18' => 'Employee Loan / Deduction Request and its approval',
+        '19' => 'Attendance record report import (JJM Logs) and the minimum minutes between logs'][(string)$version] ?? '';
     $q = fn($v) => $v === null ? 'NULL' : "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], (string)$v) . "'";
     $out = [];
     $out[] = "-- =====================================================================";

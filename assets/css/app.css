@@ -2191,3 +2191,28 @@ input.time-typed[readonly], input.time-typed[disabled] { background-image: none;
   .pwr-recent td[data-label]::before { content: attr(data-label) ": "; color: var(--muted); font-size: 11.5px; }
   .pwr-recent td.nowrap { white-space: normal; }
 }
+
+/* ===== v22: posting by dates, report import, register summary, linked-account access ===== */
+.post-range { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 4px 8px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); box-shadow: inset 0 1px 2px rgba(16, 24, 40, .05); }
+.post-range label { font-size: 11.5px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 0; }
+.post-range input[type=date], .post-range .date-typed { width: 140px; min-width: 0; padding: 5px 8px; font-size: 13px; }
+.stage-card .help, .card .help + .check { margin-top: 2px; }
+.reg-view .seg label { padding: 7px 12px; }
+.reg-by-list { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 10px; background: linear-gradient(180deg, #fff, var(--surface-2)); box-shadow: inset 0 1px 0 #fff; }
+.reg-by-list .check { margin: 0; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text); font-weight: 500; }
+table.reg.reg-summary tbody tr.sum-line td { background: #fff; }
+table.reg.reg-summary tbody tr.sum-line:nth-child(even) td { background: var(--surface-2); }
+table.reg.reg-summary td.nowrap { font-weight: 600; }
+.link-edit { border-left: 4px solid var(--primary); }
+.link-edit-h { margin: 18px 0 4px; font-size: 15px; }
+.link-scopes { margin-top: 10px; }
+.link-scopes .scope-panel { padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: linear-gradient(180deg, #fff, var(--surface-2)); box-shadow: inset 0 1px 0 #fff, 0 1px 2px rgba(16, 24, 40, .05); }
+.link-scopes .scroll-checks { display: flex; max-height: 220px; margin-top: 8px; }
+.link-edit .form-actions .muted { flex: 1 1 240px; }
+#fxReport p.muted { margin: 0 0 12px; }
+@media (max-width: 760px) {
+  .post-range { width: 100%; justify-content: space-between; }
+  .post-range input[type=date], .post-range .date-typed { flex: 1 1 120px; width: auto; }
+  .reg-by-list { width: 100%; }
+}
+.filters .reg-by-list label.check { flex-direction: row; align-items: center; gap: 7px; font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--text); }

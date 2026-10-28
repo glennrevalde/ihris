@@ -6,7 +6,13 @@
  * Others: double-clicking the "Others" header of the earnings or of the deductions replaces that
  * column by one column per item lumped in it (e.g. Position Allowance, Meal Subsidy); double-click
  * again to fold them back. ?expand=e / d / ed opens the register (and its print / CSV) expanded.
+ *
+ * v22 Totals / Summary only: when $summary (register_summary()) is given, the lines are the totals of each
+ * Co. / Branch, Department, Employee group and / or Employee type chosen instead of the employees.
  */
+$summary = $summary ?? null;
+$sumDims = $summary ? register_summary_dims() : [];
+$lead = $summary ? count($summary['by']) + 1 : 2;   // columns before the earnings
 $print = !empty($_GET['print']);
 $regFixed = !empty($regFixed);   // Payroll Batch Register II: the details are always shown, nothing to fold
 $expand = (string)get('expand', '');
@@ -75,12 +81,16 @@ $renderTotal = function (array $t, string $label) use ($cells, $print) { ?>
 // header spans: folded (Others) and expanded (its details instead)
 $spanE = count($colsE) + 1;
 $spanD = count($colsD) + 1;
-$allCols = $spanE + $spanD + 4;
+$allCols = $spanE + $spanD + 2 + $lead;
 ?>
-<table class="reg<?= $expE ? ' exp-e' : '' ?><?= $expD ? ' exp-d' : '' ?><?= $regFixed ? ' reg-fixed' : '' ?>"<?= $print ? '' : ' data-select-emp' . ($regFixed ? '' : ' data-reg-others') ?>>
+<table class="reg<?= $expE ? ' exp-e' : '' ?><?= $expD ? ' exp-d' : '' ?><?= $regFixed ? ' reg-fixed' : '' ?><?= $summary ? ' reg-summary' : '' ?>"<?= $print ? '' : ($summary ? '' : ' data-select-emp') . ($regFixed ? '' : ' data-reg-others') ?>>
   <thead>
     <tr>
+      <?php if ($summary): ?>
+        <?php foreach ($summary['by'] as $d): ?><th rowspan="2"><?= h($sumDims[$d][0]) ?></th><?php endforeach; ?><th rowspan="2" class="num">Employees</th>
+      <?php else: ?>
       <th rowspan="2">Emp. no.</th><th rowspan="2">Employee name</th>
+      <?php endif; ?>
       <th class="grp-e" colspan="<?= $expE ? $spanE - 1 + count($othE) : $spanE ?>" data-span="<?= $spanE ?>" data-span-exp="<?= $spanE - 1 + count($othE) ?>" data-grp="e">Earnings</th>
       <th class="grp-d" colspan="<?= $expD ? $spanD - 1 + count($othD) : $spanD ?>" data-span="<?= $spanD ?>" data-span-exp="<?= $spanD - 1 + count($othD) ?>" data-grp="d">Deductions</th>
       <th rowspan="2">Net pay</th>
@@ -109,7 +119,23 @@ $allCols = $spanE + $spanD + 4;
   </thead>
   <tbody>
   <?php
-  if (!$rows) {
+  if ($summary && $rows) {
+      // v22: the totals of each combination (and the sub-totals of the first dimension)
+      foreach ($summary['lines'] as $line) { ?>
+    <tr class="<?= $line['sub'] ? 'sub' : 'sum-line' ?>">
+      <?php foreach ($summary['by'] as $i => $d): ?>
+        <td class="nowrap"><?= $line['sub'] ? ($i === 0 ? 'Sub-total — ' . h($line['keys'][$d]) : '') : h($line['keys'][$d]) ?></td>
+      <?php endforeach; ?>
+      <td class="num"><?= (int)$line['employees'] ?></td>
+      <?= $cells($line['totals'], 'e', $line['sub']) ?>
+      <td class="num"><strong><?= h(number_format($line['totals']['gross'], 2)) ?></strong></td>
+      <?= $cells($line['totals'], 'd', $line['sub']) ?>
+      <td class="num"><?= h(number_format($line['totals']['total_ded'], 2)) ?></td>
+      <td class="num"><strong><?= h(number_format($line['totals']['net'], 2)) ?></strong></td>
+      <?php if (!$print): ?><td></td><?php endif; ?>
+    </tr>
+  <?php }
+  } elseif (!$rows) {
       echo '<tr><td colspan="' . ($allCols + count($othE) + count($othD)) . '" style="text-align:center;padding:24px;color:#666">No payroll item matches these filters.</td></tr>';
   } elseif (!empty($group)) {
       foreach (register_groups($data) as $unit => $g) {
@@ -128,7 +154,11 @@ $allCols = $spanE + $spanD + 4;
   </tbody>
   <tfoot>
     <tr>
+      <?php if ($summary): ?>
+        <td colspan="<?= count($summary['by']) ?>">GRAND TOTAL</td><td class="num"><?= count(array_unique(array_map(fn($r) => (int)$r['item']['employee_id'], $rows))) ?></td>
+      <?php else: ?>
       <td colspan="2">GRAND TOTAL (<?= count($rows) ?>)</td>
+      <?php endif; ?>
       <?= $cells($tot, 'e', true) ?>
       <td class="num"><?= h(number_format($tot['gross'], 2)) ?></td>
       <?= $cells($tot, 'd', true) ?>

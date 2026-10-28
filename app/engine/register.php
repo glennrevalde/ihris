@@ -78,10 +78,11 @@ function register_data(int $runId, array $f = []): array
         array_push($params, $like, $like, $like);
     }
     $items = rows('SELECT pi.*, e.employee_no, e.first_name, e.last_name, e.middle_name, e.suffix, e.biometric_id, ou.name AS unit_name, b.name AS branch_name,
-                          b.code AS branch_code, eg.code AS group_code
+                          b.code AS branch_code, eg.code AS group_code, eg.name AS group_name, e.employee_group_id, e.employee_type_id, et.name AS type_name,
+                          COALESCE(b.branch_code, b.code) AS branch_short
                    FROM payroll_items pi JOIN employees e ON e.id = pi.employee_id
                    LEFT JOIN org_units ou ON ou.id = pi.org_unit_id LEFT JOIN branches b ON b.id = pi.default_branch_id
-                   LEFT JOIN emp_groups eg ON eg.id = e.employee_group_id
+                   LEFT JOIN emp_groups eg ON eg.id = e.employee_group_id LEFT JOIN emp_types et ON et.id = e.employee_type_id
                    WHERE ' . implode(' AND ', $where) . user_scope_sql('e') . ' ORDER BY ou.name, e.last_name, e.first_name', $params);
     // the employer-share buckets always exist, so a filter that matches nobody reads as zero, not as missing keys
     $employer = ['sss_er' => 0.0, 'sss_ec' => 0.0, 'phic_er' => 0.0, 'hdmf_er' => 0.0];
@@ -241,6 +242,126 @@ function register_line_in_part(array $l, array $part): bool
         return !empty($part['is_home']);
     }
     return (int)$l['branch_id'] === (int)$part['branch_id'] || ($l['branch_id'] === null && !empty($part['is_home']));
+}
+
+/** v22: what the Summary register can total by: key => [label, value of a register row]. */
+function register_summary_dims(): array
+{
+    return [
+        'branch' => ['Co. / Branch', fn(array $r) => !empty($r['part']) ? trim(($r['part']['part_branch_code'] ?? '') . ' — ' . ($r['part']['part_branch_name'] ?? ''), ' —')
+            : trim(($r['item']['branch_short'] ?? '') . ' — ' . ($r['item']['branch_name'] ?? ''), ' —')],
+        'unit' => ['Department', fn(array $r) => (string)($r['item']['unit_name'] ?? '')],
+        'group' => ['Employee group', fn(array $r) => (string)($r['item']['group_name'] ?? '')],
+        'type' => ['Employee type', fn(array $r) => (string)($r['item']['type_name'] ?? '')],
+    ];
+}
+
+/** The summary dimensions asked for, in the fixed order Co./Branch, Department, Employee group, Employee type. */
+function register_summary_by($v): array
+{
+    $want = array_map('strval', (array)$v);
+    return array_values(array_filter(array_keys(register_summary_dims()), fn($k) => in_array($k, $want, true)));
+}
+
+/**
+ * v22 Payroll Register, Totals / Summary only: one line per combination of the dimensions chosen (Co. / Branch,
+ * Department, Employee group, Employee type, or any combination of them) with the usual register columns, a
+ * sub-total of the first dimension when two or more are chosen, and the grand total. A multi-location employee
+ * counts in each company / branch for the part of the pay earned there (as in the detailed register).
+ * Returns ['lines' => [['keys' => [dim => value], 'employees' => n, 'totals' => row, 'sub' => bool]], 'by' => dims].
+ */
+function register_summary(array $data, array $by): array
+{
+    $dims = register_summary_dims();
+    $by = $by ?: ['unit'];
+    $g = [];
+    foreach ($data['rows'] as $r) {
+        $keys = [];
+        foreach ($by as $d) {
+            $keys[$d] = ($dims[$d][1])($r) ?: '(none)';
+        }
+        $k = implode("\x1F", $keys);
+        if (!isset($g[$k])) {
+            $g[$k] = ['keys' => $keys, 'emps' => [], 'totals' => register_blank_row(), 'sub' => false];
+        }
+        $g[$k]['emps'][(int)$r['item']['employee_id']] = true;
+        register_add_row($g[$k]['totals'], $r);
+    }
+    ksort($g, SORT_NATURAL | SORT_FLAG_CASE);
+    $lines = [];
+    if (count($by) > 1) {
+        // a sub-total line after the combinations of each value of the first dimension
+        $first = $by[0];
+        $cur = null;
+        $sub = null;
+        foreach ($g as $line) {
+            if ($cur !== null && $line['keys'][$first] !== $cur) {
+                $lines[] = $sub;
+            }
+            if ($line['keys'][$first] !== $cur) {
+                $cur = $line['keys'][$first];
+                $sub = ['keys' => [$first => $cur], 'emps' => [], 'totals' => register_blank_row(), 'sub' => true];
+            }
+            $sub['emps'] += $line['emps'];
+            register_add_row($sub['totals'], $line['totals']);
+            $lines[] = $line;
+        }
+        if ($sub) {
+            $lines[] = $sub;
+        }
+    } else {
+        $lines = array_values($g);
+    }
+    foreach ($lines as &$l) {
+        $l['employees'] = count($l['emps']);
+        unset($l['emps']);
+    }
+    unset($l);
+    return ['lines' => $lines, 'by' => $by];
+}
+
+/** Add a register row (or a totals row) to a totals row. */
+function register_add_row(array &$t, array $r): void
+{
+    foreach ($r['earn'] as $k => $v) {
+        $t['earn'][$k] = ($t['earn'][$k] ?? 0) + $v;
+    }
+    foreach ($r['ded'] as $k => $v) {
+        $t['ded'][$k] = ($t['ded'][$k] ?? 0) + $v;
+    }
+    foreach (['oe', 'od'] as $x) {
+        foreach ($r[$x] ?? [] as $k => $v) {
+            $t[$x][$k] = ($t[$x][$k] ?? 0) + $v;
+        }
+    }
+    $t['gross'] += $r['gross'];
+    $t['total_ded'] += $r['total_ded'];
+    $t['net'] += $r['net'];
+}
+
+/** v22: the Summary register as CSV rows (header + data): the dimensions, the employees, then the usual columns. */
+function register_summary_csv(array $data, array $sum, string $expand = ''): array
+{
+    $dims = register_summary_dims();
+    [$head, $lines] = register_csv(['rows' => []] + $data, $expand);   // the column set of the detailed register
+    $cols = array_slice($head, 4);
+    $headOut = array_merge(array_map(fn($d) => $dims[$d][0], $sum['by']), ['Employees'], $cols);
+    $out = [];
+    $fake = function (array $line) use ($data, $expand) {
+        // one register row whose figures are the totals of the line: reuse the TOTAL line of register_csv
+        [, $l] = register_csv(['rows' => [], 'totals' => $line['totals']] + $data, $expand);
+        return array_slice(end($l), 4);
+    };
+    foreach ($sum['lines'] as $line) {
+        $lab = [];
+        foreach ($sum['by'] as $i => $d) {
+            $lab[] = $line['sub'] ? ($i === 0 ? 'Sub-total — ' . $line['keys'][$d] : '') : $line['keys'][$d];
+        }
+        $out[] = array_merge($lab, [$line['employees']], $fake($line));
+    }
+    $all = count(array_unique(array_map(fn($r) => (int)$r['item']['employee_id'], $data['rows'])));
+    $out[] = array_merge(['GRAND TOTAL'], array_fill(0, count($sum['by']) - 1, ''), [$all], $fake(['totals' => $data['totals']]));
+    return [$headOut, $out];
 }
 
 /** Register rows grouped by department (sub-totals per department). */

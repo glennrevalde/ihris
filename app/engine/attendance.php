@@ -878,6 +878,12 @@ function dtr_collect_punches(int $empId, array $sched, string $date): array
             $t = strtotime($times[0]);
             $type = $logs[0]['punch_type'];
             $nearerOut = $sched['sched_in'] && abs($t - strtotime($sched['sched_out'])) < abs($t - strtotime($sched['sched_in']));
+            // v22: a lone punch from a terminal or a file is placed by the schedule, whatever In / Out it carries: many
+            // terminals record every punch as "Out", so an 8:10 AM "Out" is the time in. A web check-in keeps the
+            // type the employee chose.
+            if ($sched['sched_in'] && $logs[0]['source'] !== 'web') {
+                $type = $nearerOut ? 'out' : 'in';
+            }
             if ($type === 'out' || ($type === 'unknown' && $nearerOut)) {
                 $p['out'] = $times[0];
             } else {
@@ -1368,7 +1374,7 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
  * interval policy), so records computed by an older version are rebuilt the first time they are
  * shown or summarized. Locked (approved) days are never touched.
  */
-const DTR_CALC_VERSION = 8;   // 6 (v16): pre-arranged overtime; 7 (v17): logs outside the shift, late capped at the shift hours; 8 (v18): day-off of the shift / masterfile on shift-only overrides
+const DTR_CALC_VERSION = 9;   // 9 (v22): a lone terminal punch placed by the schedule; 6 (v16): pre-arranged overtime; 7 (v17): logs outside the shift, late capped at the shift hours; 8 (v18): day-off of the shift / masterfile on shift-only overrides
 
 /** Rebuild the unlocked days of one employee computed by an older version of the engine. Returns the number rebuilt. */
 function dtr_refresh_stale(int $empId, string $from, string $to): int
