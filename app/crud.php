@@ -212,7 +212,8 @@ function crud_page(array $cfg): void
             if (isset($cfg['format'][$col])) {
                 $out = ($cfg['format'][$col])($v, $r);
             } elseif ($type === 'select') {
-                $out = h($f['options'][$v] ?? ($v === null ? ($f['placeholder'] ?? '') : $v));
+                // a null value is looked up as '' (a null array key is deprecated in PHP 8.5), then the placeholder
+                $out = h($v === null ? ($f['options'][''] ?? ($f['placeholder'] ?? '')) : ($f['options'][$v] ?? $v));
             } elseif ($type === 'checkbox') {
                 $out = $v ? '<span class="badge badge-green">Yes</span>' : '<span class="badge badge-gray">No</span>';
             } elseif ($type === 'money') {

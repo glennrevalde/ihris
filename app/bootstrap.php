@@ -17,6 +17,18 @@ if (!empty($GLOBALS['config']['debug'])) {
 } else {
     ini_set('display_errors', '0');
 }
+// Deprecation notices of newer PHP versions (8.4 / 8.5, e.g. "Using null as an array offset is deprecated") are not
+// errors: the code keeps working. They are written to the PHP error log instead of the page, where they would also
+// stop redirects ("headers already sent"). 'show_deprecations' => true in config/config.php shows them again.
+if (empty($GLOBALS['config']['show_deprecations'])) {
+    set_error_handler(function (int $no, string $msg, string $file = '', int $line = 0): bool {
+        if ($no & (E_DEPRECATED | E_USER_DEPRECATED)) {
+            error_log('PHP Deprecated: ' . $msg . ' in ' . $file . ' on line ' . $line);
+            return true;
+        }
+        return false;   // every other notice, warning and error is handled as before
+    });
+}
 
 if (session_status() === PHP_SESSION_NONE && PHP_SAPI !== 'cli') {
     session_name('IHRISSESSID');
