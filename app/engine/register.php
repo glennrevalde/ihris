@@ -87,7 +87,7 @@ function register_data(int $runId, array $f = []): array
     // the employer-share buckets always exist, so a filter that matches nobody reads as zero, not as missing keys
     $employer = ['sss_er' => 0.0, 'sss_ec' => 0.0, 'phic_er' => 0.0, 'hdmf_er' => 0.0];
     if (!$items) {
-        return ['run' => $run, 'rows' => [], 'totals' => register_blank_row(), 'employer' => $employer, 'others_e' => [], 'others_d' => []];
+        return ['run' => $run, 'rows' => [], 'totals' => register_blank_row(), 'employer' => $employer, 'others_e' => [], 'others_d' => [], 'others_c' => []];
     }
     $ids = array_map(fn($i) => (int)$i['id'], $items);
     $lines = rows('SELECT * FROM payroll_item_lines WHERE item_id IN (' . implode(',', $ids) . ')');
@@ -105,6 +105,7 @@ function register_data(int $runId, array $f = []): array
     $rows = [];
     $othE = [];
     $othD = [];
+    $othC = [];   // v23: the items of Adv./AR/Sal Loans (Cash Advance, Salary Loan, AR ...)
     $totals = register_blank_row();
     foreach ($items as $it) {
       // one line per company / branch chosen for an employee who worked in several of them (each line = the part of that branch)
@@ -142,6 +143,10 @@ function register_data(int $runId, array $f = []): array
                     $lbl = register_other_label($l);
                     $r['od'][$lbl] = ($r['od'][$lbl] ?? 0) + $amt;
                     $othD[$lbl] = true;
+                } elseif ($col === 'company_loan') {
+                    $lbl = register_other_label($l);
+                    $r['oc'][$lbl] = ($r['oc'][$lbl] ?? 0) + $amt;
+                    $othC[$lbl] = true;
                 }
             }
         }
@@ -169,7 +174,7 @@ function register_data(int $runId, array $f = []): array
         foreach ($r['ded'] as $k => $v) {
             $totals['ded'][$k] += $v;
         }
-        foreach (['oe', 'od'] as $g) {
+        foreach (['oe', 'od', 'oc'] as $g) {
             foreach ($r[$g] as $k => $v) {
                 $totals[$g][$k] = ($totals[$g][$k] ?? 0) + $v;
             }
@@ -182,13 +187,15 @@ function register_data(int $runId, array $f = []): array
     }
     ksort($othE, SORT_NATURAL | SORT_FLAG_CASE);
     ksort($othD, SORT_NATURAL | SORT_FLAG_CASE);
-    return ['run' => $run, 'rows' => $rows, 'totals' => $totals, 'employer' => $employer, 'others_e' => array_keys($othE), 'others_d' => array_keys($othD)];
+    ksort($othC, SORT_NATURAL | SORT_FLAG_CASE);
+    return ['run' => $run, 'rows' => $rows, 'totals' => $totals, 'employer' => $employer, 'others_e' => array_keys($othE), 'others_d' => array_keys($othD),
+        'others_c' => array_keys($othC)];
 }
 
 function register_blank_row(): array
 {
     return ['earn' => array_fill_keys(array_keys(REG_EARN_COLS), 0.0), 'ded' => array_fill_keys(array_keys(REG_DED_COLS), 0.0),
-        'gross' => 0.0, 'total_ded' => 0.0, 'net' => 0.0, 'item' => null, 'part' => null, 'oe' => [], 'od' => []];
+        'gross' => 0.0, 'total_ded' => 0.0, 'net' => 0.0, 'item' => null, 'part' => null, 'oe' => [], 'od' => [], 'oc' => []];
 }
 
 /**
@@ -329,7 +336,7 @@ function register_add_row(array &$t, array $r): void
     foreach ($r['ded'] as $k => $v) {
         $t['ded'][$k] = ($t['ded'][$k] ?? 0) + $v;
     }
-    foreach (['oe', 'od'] as $x) {
+    foreach (['oe', 'od', 'oc'] as $x) {
         foreach ($r[$x] ?? [] as $k => $v) {
             $t[$x][$k] = ($t[$x][$k] ?? 0) + $v;
         }
@@ -380,8 +387,8 @@ function register_groups(array $data, string $by = 'unit_name'): array
         foreach ($r['ded'] as $k => $v) {
             $g[$key]['totals']['ded'][$k] += $v;
         }
-        foreach (['oe', 'od'] as $x) {
-            foreach ($r[$x] as $k => $v) {
+        foreach (['oe', 'od', 'oc'] as $x) {
+            foreach ($r[$x] ?? [] as $k => $v) {
                 $g[$key]['totals'][$x][$k] = ($g[$key]['totals'][$x][$k] ?? 0) + $v;
             }
         }
@@ -395,12 +402,14 @@ function register_groups(array $data, string $by = 'unit_name'): array
 
 /**
  * Register as CSV rows (header + data), used by the Export button. $expand: 'e' and / or 'd' replace the
- * Others column of the earnings / deductions by one column per item (as on screen after a double-click).
+ * Others column of the earnings / deductions by one column per item (as on screen after a double-click);
+ * v23: 'c' does the same for Adv./AR/Sal Loans (one column per loan / advance / AR).
  */
 function register_csv(array $data, string $expand = ''): array
 {
     $expE = strpos($expand, 'e') !== false && !empty($data['others_e']);
     $expD = strpos($expand, 'd') !== false && !empty($data['others_d']);
+    $expC = strpos($expand, 'c') !== false && !empty($data['others_c']);
     $colsE = [];
     foreach (REG_EARN_COLS as $c => $lbl) {
         if ($c === 'others' && $expE) {
@@ -416,6 +425,10 @@ function register_csv(array $data, string $expand = ''): array
         if ($c === 'others' && $expD) {
             foreach ($data['others_d'] as $o) {
                 $colsD[] = ['od', $o, $o];
+            }
+        } elseif ($c === 'company_loan' && $expC) {
+            foreach ($data['others_c'] as $o) {
+                $colsD[] = ['oc', $o, $o];
             }
         } else {
             $colsD[] = ['ded', $c, $lbl];

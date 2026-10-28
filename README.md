@@ -196,6 +196,15 @@ Demo data covers **August–September 2026**: August has approved cutoffs and fi
 | Multi-location hours listed by Co. / Branch | Payroll Batch Transaction and Attendance Batch Transaction Entry: choosing a company / branch lists its employees **and** everyone whose multi-location entry has hours there. Their row shows only the hours of that branch (*Part of a multi-location transaction*); saving it changes that location and the total becomes the sum of the locations again. All companies lists every transaction whole. |
 | Payroll Register and payslips by branch | Payroll Batch Register → Co. / Branch: the employees of the branch plus the multi-location employees who worked there, each with only the pay earned in that branch, its share of the employer contributions and the deductions when it is the deduction source (*Branch part*). The branch totals of all branches add up to the *All* register. **Branch payslip** opens the payslip on that branch's tab. Print Payslips with a company / branch prints the branch payslip of those employees; with All, one consolidated payslip each (or split). Print and CSV export follow the same filter. |
 
+### Additions in version 23
+
+No database change (database version stays 19): copy the files and reload.
+
+| Request | Where in the app |
+|---|---|
+| Do not lump the loans / AR / advances of the payslip as Advances; display each deduction separately | Payslip (screen, print, PDF, Print Payslips, My Payslips): every deduction of the register column **Adv./AR/Sal Loans** has its own row with its name in place of *Advances*, e.g. *CA Cash Advance 1,287.50* and *Salary Loan 1,295.00*; the same item over two schedules adds up on its row. A payslip with none keeps *Advances .00*. Totals and net pay are unchanged. Also: the *( COPY )* mark sits under the payslip title instead of over the Period line. |
+| Unbundle the Adv./AR/Sal Loans column of the register into individual deduction columns | **Payroll Batch Register II**: Adv./AR/Sal Loans is always shown as one column per loan / advance / AR (CA Cash Advance, Salary Loan …), on screen, in print, in Export CSV and in the Totals / Summary report, consistent with the payslips. **Payroll Batch Register**: double-click the Adv./AR/Sal Loans header to unfold (and fold) it, like Others. |
+
 ### Additions in version 22
 
 Database version 19: open the site once (it upgrades by itself) or import `database/upgrade_to_v19_mysql55.sql` (MySQL 5.5; after the version 18 script if it was not imported yet).

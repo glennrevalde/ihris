@@ -53,7 +53,7 @@ const PS_DED_ROWS = [
     'hdmf_loan'    => 'PAGIBIG Loan',
     'phic'         => 'PhilHealth',
     'wtax'         => 'Tax',
-    'company_loan' => 'Advances',
+    'company_loan' => 'Advances',   // v23: shown only when the payslip has none; otherwise one row per loan / advance / AR (see payslip_blocks)
 ];
 
 /**
@@ -167,6 +167,7 @@ function payslip_blocks(array $it, ?int $branchId = null): array
         $ded[$col] = ['label' => $label, 'amount' => 0.0];
     }
     $ticketAmt = 0.0;
+    $advances = [];   // v23: each loan / advance / AR of the register column Adv./AR/Sal Loans on its own row
     if (!$branchRow || $isHome) {
         foreach ($lines as $l) {
             if ($l['line_type'] !== 'deduction') {
@@ -178,12 +179,31 @@ function payslip_blocks(array $it, ?int $branchId = null): array
             }
             if ($l['code'] === 'TICKETS') {
                 $ticketAmt += (float)$l['amount'];
+            } elseif ($col === 'company_loan') {
+                // Cash Advance, Salary Loan, AR ... are not lumped as "Advances": one row each (the same item over
+                // several lines, e.g. two schedules of one loan, adds up on its row)
+                $lbl = register_other_label($l);
+                $advances[$lbl] = ($advances[$lbl] ?? 0) + (float)$l['amount'];
             } elseif (isset($ded[$col])) {
                 $ded[$col]['amount'] += (float)$l['amount'];
             } else {
                 $dedLines[] = ['label' => $l['description'], 'amount' => (float)$l['amount']];
             }
         }
+    }
+    if ($advances) {
+        // the rows take the place of Advances, in the same position
+        $out = [];
+        foreach ($ded as $k => $d) {
+            if ($k !== 'company_loan') {
+                $out[$k] = $d;
+                continue;
+            }
+            foreach ($advances as $lbl => $amt) {
+                $out['cl:' . $lbl] = ['label' => $lbl, 'amount' => $amt];
+            }
+        }
+        $ded = $out;
     }
     $totalDed = !$branchRow || $isHome ? (float)$it['total_deductions'] : 0.0;
 
@@ -278,7 +298,7 @@ function payslip_html(array $it, array $o = []): string
         <div class="ps-branch">No deduction is taken from this branch. The deductions of the pay are carried by the deduction source branch<?= !empty($it['deduction_branch_id']) ? '' : ' (the employer of record)' ?>, so this payslip is paid in full.</div>
       <?php else: ?>
         <?php foreach ($b['ded'] as $d): ?>
-          <div class="ps-line"><span class="l"><b><?= h($d['label']) ?></b></span><span class="a"><?= ps_amt((float)$d['amount']) ?></span></div>
+          <div class="ps-line"><span class="l"><b><?= h(mb_strimwidth($d['label'], 0, 34, '…')) ?></b></span><span class="a"><?= ps_amt((float)$d['amount']) ?></span></div>
         <?php endforeach; ?>
         <div class="ps-line"><span class="l"><b>Tickets</b></span><span class="a"><?= ps_amt($b['tickets']) ?></span></div>
         <div class="ps-fill"></div>
@@ -448,7 +468,7 @@ function payslip_pdf_block(SimplePDF $pdf, array $it, float $top, ?int $branchId
         $pdf->text($c2, $dy, 'branch; it is paid in full.', 7, false, 'L', 0.35);
     } else {
         foreach ($b['ded'] as $d) {
-            $pdf->text($c2, $dy, $d['label'], 8, true);
+            $pdf->text($c2, $dy, mb_strimwidth($d['label'], 0, 24, '…'), 8, true);
             $pdf->text($c3 - 16, $dy, ps_amt((float)$d['amount']), 8, false, 'R');
             $dy += 10;
         }

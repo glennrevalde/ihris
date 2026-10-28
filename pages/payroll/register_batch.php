@@ -14,7 +14,7 @@
 $route = (string)get('p') === 'pay_register2' ? 'pay_register2' : 'pay_register';
 $regFixed = $route === 'pay_register2';
 if ($regFixed) {
-    $_GET['expand'] = 'ed';
+    $_GET['expand'] = 'edc';   // v23: also Adv./AR/Sal Loans unbundled (one column per loan / advance / AR)
 }
 $regTitle = $regFixed ? 'Payroll Batch Register II' : 'Payroll Batch Register';
 $runs = pairs("SELECT r.id, CONCAT(r.run_no, ' — ', pg.code, ' ', DATE_FORMAT(r.period_start, '%m/%d/%y'), '-', DATE_FORMAT(r.period_end, '%m/%d/%y'), ' (', r.status, ')')
@@ -188,9 +188,10 @@ endif; ?>
 </div>
 
 <?php if ($regFixed): ?>
-  <p class="reg-hint muted small">Every earning and deduction consolidated in <strong>Others</strong> is shown in its own column<?= !empty($data['others_e']) || !empty($data['others_d']) ? ': ' . h(implode(', ', array_merge($data['others_e'] ?? [], $data['others_d'] ?? []))) : '; this run has none' ?>.</p>
-<?php elseif (!empty($data['others_e']) || !empty($data['others_d'])): ?>
-  <p class="reg-hint muted small">Double-click the <strong>Others</strong> header of the earnings or the deductions to show each item in its own column; double-click again to fold them back. Print and Export follow what is shown.</p>
+  <p class="reg-hint muted small">Every earning and deduction consolidated in <strong>Others</strong> is shown in its own column<?= !empty($data['others_e']) || !empty($data['others_d']) ? ': ' . h(implode(', ', array_merge($data['others_e'] ?? [], $data['others_d'] ?? []))) : '; this run has none' ?>.
+    <?= !empty($data['others_c']) ? 'Adv./AR/Sal Loans is shown by item too: ' . h(implode(', ', $data['others_c'])) . '.' : '' ?></p>
+<?php elseif (!empty($data['others_e']) || !empty($data['others_d']) || !empty($data['others_c'])): ?>
+  <p class="reg-hint muted small">Double-click the <strong>Others</strong> header of the earnings or the deductions, or the <strong>Adv./AR/Sal Loans</strong> header, to show each item in its own column; double-click again to fold them back. Print and Export follow what is shown.</p>
 <?php endif; ?>
 <div class="card flush reg-screen">
   <div class="table-wrap table-scroll">

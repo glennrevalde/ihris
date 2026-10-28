@@ -571,11 +571,15 @@
   /* ------------------------------------------------------------ payroll register: details of Others (double-click the header) */
   $$('table[data-reg-others]').forEach(function (t) {
     function apply() {
+      // v23: the Earnings / Deductions header spans the columns of its group now shown (Others and Adv./AR/Sal Loans fold apart)
       ['e', 'd'].forEach(function (g) {
         var head = t.querySelector('th[data-grp="' + g + '"]');
-        if (head) head.colSpan = parseInt(t.classList.contains('exp-' + g) ? head.getAttribute('data-span-exp') : head.getAttribute('data-span'), 10);
+        if (!head) return;
+        var n = 0;
+        $$('thead tr:nth-child(2) th.grp-' + g, t).forEach(function (th) { if (getComputedStyle(th).display !== 'none') n++; });
+        if (n) head.colSpan = n;
       });
-      var exp = (t.classList.contains('exp-e') ? 'e' : '') + (t.classList.contains('exp-d') ? 'd' : '');
+      var exp = ['e', 'd', 'c'].filter(function (g) { return t.classList.contains('exp-' + g); }).join('');
       $$('[data-expand-link]').forEach(function (a) {
         try {
           var u = new URL(a.getAttribute('href'), location.href);

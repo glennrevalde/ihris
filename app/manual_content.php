@@ -3273,6 +3273,7 @@ return [
     'Every screen opened from the register shows Back to Payroll Batch Register, which returns here with the same run.',
     'Double-click the Others header of the earnings to replace it by one column per item lumped in it (for example Position Allowance, Meal Subsidy). Do the same on the Others of the deductions. Double-click again to fold the details back into Others. Print register and Export CSV follow what is shown.',
     'For the totals only, choose Report: Totals / Summary only and tick Totals by: Co. / Branch, Department, Employee group and / or Employee type. Each line is the total of one value (or one combination), for example HO with each of its departments, then the sub-total of HO.',
+    'Double-click the Adv./AR/Sal Loans header to show one column per loan, advance or AR it holds (for example CA Cash Advance, Salary Loan), as on the payslip; double-click again to fold them back. Print register and Export CSV follow what is shown.',
 ],
 'fields' => [
     ['Report: Totals / Summary only', 'Instead of one line per employee, one line per Co. / Branch, Department, Employee group or Employee type of the run, or per combination of them (tick any of the four in Totals by), with the usual earning and deduction columns, the number of employees, a sub-total of the first one chosen when two or more are ticked, and the grand total. The filters still apply. Print summary and Export CSV give the same lines.'],
@@ -3303,7 +3304,7 @@ return [
 'route' => 'pay_register2',
 'roles' => ['payroll'],
 'menu' => 'Process & Registers > Payroll Batch Register II',
-'keywords' => 'register ii batch register 2 others consolidated earnings deductions detail columns allowance loan item per column summary totals only by company branch department employee group employee type',
+'keywords' => 'register ii batch register 2 others consolidated earnings deductions detail columns allowance loan item per column summary totals only by company branch department employee group employee type adv ar sal loans cash advance salary loan unbundle',
 'purpose' => 'The Payroll Batch Register shows the items without a column of their own lumped in Others. Register II always shows them in detail: one column for each earning item (for example Position Allowance, Meal Subsidy, Rice Allowance) and one column for each deduction item (company loan, union dues, cash bond), so the consolidated earnings and deductions can be checked item by item.',
 'steps' => [
     'Choose the run and the same filters as the Payroll Batch Register: company or branch, department, employee group and type.',
@@ -3313,6 +3314,7 @@ return [
     'Press Print register for the legal landscape print, or Export CSV. Both carry every detail column.',
     'Payroll Batch Register opens the usual register, where Others can be folded and unfolded.',
     'Report: Totals / Summary only gives the totals of each Co. / Branch, Department, Employee group and / or Employee type (any combination) with every detail column, as on the Payroll Batch Register.',
+    'Adv./AR/Sal Loans is always unbundled too: one column per loan, advance or AR (CA Cash Advance, Salary Loan …), the same rows the employee payslips show.',
 ],
 'rules' => [
     'The detail columns of an item appear only when at least one employee of the run has an amount on it.',
@@ -3364,11 +3366,12 @@ return [
 'route' => 'payslip',
 'roles' => 'all',
 'menu' => 'Opened from a payroll run, the register or My Payslips',
-'keywords' => 'payslip pdf print copy reprint ytd earnings deductions net pay outstanding balances branch consolidated taxable income drill down tax computation bracket deduction source',
+'keywords' => 'payslip pdf print copy reprint ytd earnings deductions net pay outstanding balances branch consolidated taxable income drill down tax computation bracket deduction source advances cash advance salary loan ar separate rows',
 'purpose' => 'The document the employee receives. It lists the earnings, the deductions, the year-to-date figures and the net pay, with the outstanding loan balances when that option is on.',
 'fields' => [
     ['Earnings', 'Basic, absences, lates, undertime, overtime and every premium category, night premium, holiday pay, 13th month and the leave categories. Hours are shown beside the amounts when that option is on.'],
-    ['Deductions', 'SSS, SSS Loan, SSS Calamity Loan, Pag-IBIG and its loan, PhilHealth, tax, advances, meal tickets and any other deduction.'],
+    ['Deductions', 'SSS, SSS Loan, SSS Calamity Loan, Pag-IBIG and its loan, PhilHealth, tax, each loan, advance and AR on its own row, meal tickets and any other deduction.'],
+    ['Loans, advances and AR', 'Not lumped as Advances: every deduction of the register column Adv./AR/Sal Loans (Payroll register column of the Employee Transactions Table) has its own row with its name, for example CA Cash Advance 1,287.50 and Salary Loan 1,295.00, so the employee sees what each amount is for. Two schedules of the same item add up on its row. When the payslip has none, the row Advances .00 keeps its place.'],
     ['SSS Calamity Loan', 'Shown on its own row, never inside SSS Loan: a deduction whose code is SSS-CL (TTD_SSS-CL for a transaction with terms), whose description names the SSS calamity loan, or that comes from an SSS calamity loan ledger.'],
     ['YTD information', 'Earnings, taxable income and tax for the year so far, this payslip, and the two added together.'],
     ['Outstanding balances', 'Active ledgers with a balance.'],

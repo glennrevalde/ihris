@@ -2216,3 +2216,9 @@ table.reg.reg-summary td.nowrap { font-weight: 600; }
   .reg-by-list { width: 100%; }
 }
 .filters .reg-by-list label.check { flex-direction: row; align-items: center; gap: 7px; font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--text); }
+
+/* v23: Adv./AR/Sal Loans unbundled in the payroll registers (one column per loan / advance / AR) */
+.reg.exp-c .oc-d { display: table-cell; }
+.reg.exp-c .oc { display: none; }
+/* v23: the ( COPY ) mark sits under the payslip title instead of over the Period line */
+.ps .ps-copy { position: static; transform: none; display: block; text-align: center; margin: 2px 0 4px; font-size: 13px; }
