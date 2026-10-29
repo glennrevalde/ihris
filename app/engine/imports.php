@@ -5,6 +5,56 @@
  *  - summarized attendance from Excel (.xlsx) / CSV using the standard template
  */
 
+/**
+ * v24: the attendance report configuration a file is written in: the one whose Employee ID label is found in the
+ * sheet (and whose period label too, when it has one). $chosen wins when it fits. Null when none fits.
+ */
+function import_report_profile_for(string $path, array $profiles, ?array $chosen = null): ?array
+{
+    try {
+        $grid = grid_read_file($path);
+    } catch (Throwable $e) {
+        return $chosen;
+    }
+    $norm = fn($v) => mb_strtolower(preg_replace('/\s+/u', '', (string)$v));
+    $cells = [];
+    foreach ($grid as $row) {
+        foreach ($row as $v) {
+            $cells[] = $norm($v);
+        }
+    }
+    $score = function (array $p) use ($cells, $norm): int {
+        $id = $norm(($p['rp_id_label'] ?? '') ?: 'User ID:');
+        $per = $norm($p['rp_period_label'] ?? '');
+        $hits = 0;
+        $perHit = $per === '';
+        foreach ($cells as $c) {
+            if ($c === $id || ($id !== '' && strpos($c, $id) === 0 && !ctype_alpha(substr($c, strlen($id), 1)))) {
+                $hits++;
+            }
+            if (!$perHit && strpos($c, $per) === 0) {
+                $perHit = true;
+            }
+        }
+        return $hits && $perHit ? $hits : 0;
+    };
+    if ($chosen && $score($chosen)) {
+        return $chosen;
+    }
+    $best = null;
+    $bestScore = 0;
+    foreach ($profiles as $p) {
+        if (($p['layout'] ?? '') !== 'report') {
+            continue;
+        }
+        $sc = $score($p);
+        if ($sc > $bestScore) {
+            [$best, $bestScore] = [$p, $sc];
+        }
+    }
+    return $best ?: $chosen;
+}
+
 /** v22: layouts of an import configuration (Import Log Configuration). */
 const IMPORT_LAYOUTS = ['delimited' => 'delimited', 'fixed' => 'fixed width', 'report' => 'attendance report'];
 
@@ -198,11 +248,7 @@ function import_classify_untyped(array $rows, callable $empOf): array
 /** Import parsed biometric rows. Returns stats. */
 function import_biometric_rows(array $rows, array $profile, ?int $branchId, string $fileName): array
 {
-    $bioMap = pairs('SELECT biometric_id, id FROM employees WHERE biometric_id IS NOT NULL');
-    // normalize leading zeros
-    foreach ($bioMap as $k => $v) {
-        $bioMap[ltrim((string)$k, '0') ?: (string)$k] = $v;
-    }
+    $bioMap = bio_employee_map();   // v24: with the Other biometric IDs of the employees
     // punches the file does not type are classified by the employee's shift code
     $rows = import_classify_untyped(array_map(fn($r) => $r + ['log_time' => $r['time'], 'punch_type' => $r['type']], $rows), fn($bio) => $bioMap[ltrim($bio, '0') ?: $bio] ?? ($bioMap[$bio] ?? null));
     foreach ($rows as &$r) {
@@ -407,15 +453,111 @@ function post_import_punches(int $empId, string $date, ?string $in, ?string $out
    first staged, checked and only then posted to the attendance logs.
    ===================================================================== */
 
-/** Insert parsed rows into the staging area. Returns counters. */
-function staging_insert(array $rows, string $source, ?int $batchId = null): array
+/**
+ * v24: biometric ID => employee id: the Biometric ID of the Employee Masterfile plus the Other biometric IDs of the
+ * employee (the user ID of the same person on another terminal or in another log file, e.g. JJM Logs and NBJ Logs).
+ * Leading zeros do not count ("007" = "7").
+ */
+function bio_employee_map(): array
 {
-    $bioMap = pairs('SELECT biometric_id, id FROM employees WHERE biometric_id IS NOT NULL AND biometric_id <> ""');
-    foreach ($bioMap as $k => $v) {
-        $bioMap[ltrim((string)$k, '0') ?: (string)$k] = $v;
+    $map = pairs('SELECT biometric_id, id FROM employees WHERE biometric_id IS NOT NULL AND biometric_id <> ""');
+    if (bio_alt_supported()) {
+        foreach (pairs('SELECT bio_id, employee_id FROM employee_bio_ids') as $k => $v) {
+            if (!isset($map[$k])) {
+                $map[$k] = $v;   // the masterfile Biometric ID wins
+            }
+        }
     }
+    foreach ($map as $k => $v) {
+        $n = ltrim((string)$k, '0') ?: (string)$k;
+        if (!isset($map[$n])) {
+            $map[$n] = $v;
+        }
+    }
+    return $map;
+}
+
+/** Employee of a biometric ID from bio_employee_map(). */
+function bio_employee_of(array $map, string $bio): ?int
+{
+    $k = ltrim($bio, '0') ?: $bio;
+    $e = $map[$bio] ?? ($map[$k] ?? null);
+    return $e ? (int)$e : null;
+}
+
+/** v24: are the Other biometric IDs there (database version 20)? */
+function bio_alt_supported(): bool
+{
+    static $ok = [];
+    $db = function_exists('active_db_name') ? active_db_name() : '';
+    return $ok[$db] ??= mig_table_exists('employee_bio_ids');
+}
+
+/** The Other biometric IDs of an employee. */
+function employee_bio_ids(int $empId): array
+{
+    return bio_alt_supported() ? q('SELECT bio_id FROM employee_bio_ids WHERE employee_id = ? ORDER BY id', [$empId])->fetchAll(PDO::FETCH_COLUMN) : [];
+}
+
+/**
+ * Save the Other biometric IDs of an employee (comma, space or line separated). An ID already used by another employee
+ * (as Biometric ID or other ID) is refused. Returns the error messages (empty = saved).
+ */
+function employee_bio_ids_save(int $empId, string $text): array
+{
+    if (!bio_alt_supported()) {
+        return [];
+    }
+    $own = (string)val('SELECT biometric_id FROM employees WHERE id = ?', [$empId]);
+    $ids = [];
+    foreach (preg_split('/[\s,;]+/', trim($text)) as $b) {
+        $b = trim($b);
+        if ($b === '' || $b === $own || in_array($b, $ids, true)) {
+            continue;
+        }
+        if (!preg_match('/^[A-Za-z0-9_-]{1,20}$/', $b)) {
+            return ['Other biometric ID "' . $b . '": letters, digits, - and _ only (up to 20).'];
+        }
+        $ids[] = $b;
+    }
+    $errs = [];
+    foreach ($ids as $b) {
+        $other = row('SELECT id, employee_no FROM employees WHERE biometric_id = ? AND id <> ?', [$b, $empId])
+            ?: row('SELECT e.id, e.employee_no FROM employee_bio_ids x JOIN employees e ON e.id = x.employee_id WHERE x.bio_id = ? AND x.employee_id <> ?', [$b, $empId]);
+        if ($other) {
+            $errs[] = 'Biometric ID ' . $b . ' already belongs to employee ' . $other['employee_no'] . '.';
+        }
+    }
+    if ($errs) {
+        return $errs;
+    }
+    $old = employee_bio_ids($empId);
+    if ($old != $ids) {
+        q('DELETE FROM employee_bio_ids WHERE employee_id = ?', [$empId]);
+        foreach ($ids as $b) {
+            insert('employee_bio_ids', ['employee_id' => $empId, 'bio_id' => $b, 'created_at' => now()]);
+        }
+        audit('pis', 'employee_bio_ids', 'employees', $empId, ['from' => $old, 'to' => $ids]);
+    }
+    return [];
+}
+
+/**
+ * Insert parsed rows into the staging area. Returns counters (+ untyped_ids: the staged logs whose type was placed
+ * by the shift code, for staging_reclassify()).
+ * v24 $opt: 'group' => the other batches of the same upload (files read before this one), 'min_gap' => minutes.
+ * A punch is the same punch when the same employee has one in the same minute (the seconds of two exports differ);
+ * across the files of one upload, a punch within the Minimum minutes between logs of one staged from another file
+ * (JJM Logs and NBJ Logs of the same terminal) is not staged twice.
+ */
+function staging_insert(array $rows, string $source, ?int $batchId = null, array $opt = []): array
+{
+    $bioMap = bio_employee_map();
+    $empOf = fn($bio) => bio_employee_of($bioMap, (string)$bio);
     $branchByCode = pairs('SELECT COALESCE(branch_code, code), id FROM branches');
-    $st = ['staged' => 0, 'duplicates' => 0, 'errors' => 0, 'unmatched' => 0];
+    $st = ['staged' => 0, 'duplicates' => 0, 'errors' => 0, 'unmatched' => 0, 'untyped_ids' => []];
+    $group = array_values(array_filter(array_map('intval', (array)($opt['group'] ?? []))));
+    $gap = max(1, (int)($opt['min_gap'] ?? 0));
     // v22: a terminal that records every punch with the same state (all "Out", or all "In") does not tell In from Out:
     // when two or more punches of one employee-day, an hour or more apart, all carry the same In or Out type, they are
     // placed by the shift code like untyped punches (07:58 Out + 17:05 Out = Time in + Time out)
@@ -437,17 +579,23 @@ function staging_insert(array $rows, string $source, ?int $batchId = null): arra
             }
         }
     }
+    $untyped = [];
+    foreach ($rows as $i => $r) {
+        $untyped[$i] = ($r['punch_type'] ?? 'unknown') === 'unknown';
+    }
     // untyped punches are placed by the shift code (2, 4 or 6 logs a day) before they are staged
-    $rows = import_classify_untyped($rows, fn($bio) => $bioMap[ltrim($bio, '0') ?: $bio] ?? ($bioMap[$bio] ?? null));
+    $rows = import_classify_untyped($rows, $empOf);
     $ins = db()->prepare('INSERT INTO log_staging (batch_id, line_no, log_time, bio_id, employee_id, punch_type, co_code, branch_code, branch_id, device_id, source, raw_text, remarks, status, created_by)
                           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
-    foreach ($rows as $r) {
+    foreach ($rows as $i => $r) {
         $bio = (string)($r['bio_id'] ?? '');
-        $bioKey = ltrim($bio, '0') ?: $bio;
-        $empId = $bioMap[$bioKey] ?? ($bioMap[$bio] ?? null);
+        $empId = $empOf($bio);
         $branchId = $r['branch_id'] ?? ($r['branch_code'] ?? null ? ($branchByCode[$r['branch_code']] ?? null) : null);
         $status = 'pending';
         $remark = $r['error'] ?? null;
+        $t = !empty($r['log_time']) ? strtotime((string)$r['log_time']) : 0;
+        $m0 = $t ? date('Y-m-d H:i:00', $t) : null;   // the minute of the punch
+        $m1 = $t ? date('Y-m-d H:i:59', $t) : null;
         if ($remark) {
             $status = 'error';
             $st['errors']++;
@@ -456,23 +604,29 @@ function staging_insert(array $rows, string $source, ?int $batchId = null): arra
             $remark = 'No employee has biometric ID "' . $bio . '"';
             $st['unmatched']++;
             $st['errors']++;
-        } elseif (val('SELECT COUNT(*) FROM attendance_logs WHERE employee_id = ? AND log_time = ?', [$empId, $r['log_time']])) {
+        } elseif (val('SELECT COUNT(*) FROM attendance_logs WHERE employee_id = ? AND log_time BETWEEN ? AND ?', [$empId, $m0, $m1])) {
             $status = 'duplicate';
             $remark = 'Already in the attendance logs';
             $st['duplicates']++;
-        } elseif ($batchId && val("SELECT COUNT(*) FROM log_staging WHERE bio_id = ? AND log_time = ? AND status = 'pending' AND batch_id = ?", [$bio, $r['log_time'], $batchId])) {
+        } elseif ($batchId && val("SELECT COUNT(*) FROM log_staging WHERE employee_id = ? AND log_time BETWEEN ? AND ? AND status = 'pending' AND batch_id = ?", [$empId, $m0, $m1, $batchId])) {
             $status = 'duplicate';
             $remark = 'Already staged';
             $st['duplicates']++;
-        } elseif ($batchId && val("SELECT COUNT(*) FROM log_staging WHERE bio_id = ? AND log_time = ? AND status = 'pending'", [$bio, $r['log_time']])) {
+        } elseif ($group && val("SELECT COUNT(*) FROM log_staging WHERE employee_id = ? AND status = 'pending' AND batch_id IN (" . implode(',', $group) . ') AND log_time BETWEEN ? AND ?',
+                [$empId, date('Y-m-d H:i:s', $t - ($gap * 60 - 1)), date('Y-m-d H:i:s', $t + ($gap * 60 - 1))])) {
+            // v24: the same punch in another file of this upload (the same terminal exported twice, or another format)
+            $status = 'duplicate';
+            $remark = 'Already staged from another file of this upload';
+            $st['duplicates']++;
+        } elseif ($batchId && val("SELECT COUNT(*) FROM log_staging WHERE employee_id = ? AND log_time BETWEEN ? AND ? AND status = 'pending'", [$empId, $m0, $m1])) {
             // v22: still pending from an earlier download or file: it joins this batch, so Post logs of this batch posts it
             // (before, it stayed behind in the earlier batch and those days never reached the Attendance Entry)
             // it takes the type read now (with the other punches of the day it is better placed than when it came alone)
-            q("UPDATE log_staging SET batch_id = ?, punch_type = ? WHERE bio_id = ? AND log_time = ? AND status = 'pending'", [$batchId, $r['punch_type'] ?? 'unknown', $bio, $r['log_time']]);
+            q("UPDATE log_staging SET batch_id = ?, punch_type = ? WHERE employee_id = ? AND log_time BETWEEN ? AND ? AND status = 'pending'", [$batchId, $r['punch_type'] ?? 'unknown', $empId, $m0, $m1]);
             $status = 'duplicate';
             $remark = 'Already staged: moved into this batch';
             $st['staged']++;
-        } elseif (!$batchId && val("SELECT COUNT(*) FROM log_staging WHERE bio_id = ? AND log_time = ? AND status = 'pending'", [$bio, $r['log_time']])) {
+        } elseif (!$batchId && val("SELECT COUNT(*) FROM log_staging WHERE employee_id = ? AND log_time BETWEEN ? AND ? AND status = 'pending'", [$empId, $m0, $m1])) {
             $status = 'duplicate';
             $remark = 'Already staged';
             $st['duplicates']++;
@@ -482,8 +636,54 @@ function staging_insert(array $rows, string $source, ?int $batchId = null): arra
         $ins->execute([$batchId, (int)($r['line_no'] ?? 0), $r['log_time'] ?? null, $bio, $empId, $r['punch_type'] ?? 'unknown',
             $r['co_code'] ?? null, $r['branch_code'] ?? null, $branchId, $r['device_id'] ?? null, $source,
             mb_substr((string)($r['raw_text'] ?? ''), 0, 250), $remark ? mb_substr($remark, 0, 250) : null, $status, user_id()]);
+        if ($status === 'pending' && $untyped[$i]) {
+            $st['untyped_ids'][] = (int)db()->lastInsertId();
+        }
     }
     return $st;
+}
+
+/**
+ * v24: place again, by the shift code, the untyped punches of an upload of several files once every file is staged:
+ * the punches of one employee-day read from different files (JJM Logs and NBJ Logs, devices of Company A and B)
+ * are placed together, so 08:00 from one file and 12:00, 13:00, 17:00 from another make Time in, Break out, Break in,
+ * Time out. Punches typed by their file (In / Out / Break) are counted but keep their type. Returns the logs changed.
+ */
+function staging_reclassify(array $ids): int
+{
+    $ids = array_values(array_filter(array_map('intval', $ids)));
+    if (!$ids) {
+        return 0;
+    }
+    $days = [];
+    foreach (array_chunk($ids, 1000) as $chunk) {
+        foreach (rows("SELECT id, employee_id, log_time FROM log_staging WHERE status = 'pending' AND employee_id IS NOT NULL AND id IN (" . implode(',', $chunk) . ')') as $r) {
+            $days[(int)$r['employee_id']][substr((string)$r['log_time'], 0, 10)][(int)$r['id']] = (string)$r['log_time'];
+        }
+    }
+    $n = 0;
+    foreach ($days as $empId => $dates) {
+        $emp = att_employee($empId);
+        if (!$emp) {
+            continue;
+        }
+        foreach ($dates as $date => $mine) {
+            $all = array_merge(
+                q("SELECT log_time FROM log_staging WHERE employee_id = ? AND status = 'pending' AND log_time BETWEEN ? AND ?", [$empId, $date . ' 00:00:00', $date . ' 23:59:59'])->fetchAll(PDO::FETCH_COLUMN),
+                q('SELECT log_time FROM attendance_logs WHERE employee_id = ? AND log_time BETWEEN ? AND ?', [$empId, $date . ' 00:00:00', $date . ' 23:59:59'])->fetchAll(PDO::FETCH_COLUMN));
+            $times = [];
+            foreach ($all as $t) {
+                $times[substr((string)$t, 0, 16)] = (string)$t;   // the same minute twice counts once
+            }
+            $typeOf = classify_punches_by_shift($emp, $date, array_values($times));
+            foreach ($mine as $id => $t) {
+                $k = $times[substr($t, 0, 16)] ?? $t;
+                $type = $typeOf[$t] ?? ($typeOf[$k] ?? 'unknown');
+                $n += q("UPDATE log_staging SET punch_type = ? WHERE id = ? AND punch_type <> ?", [$type, $id, $type])->rowCount();
+            }
+        }
+    }
+    return $n;
 }
 
 /**
@@ -719,7 +919,9 @@ function parse_report_file(string $path, array $profile, ?array $range = null, i
     $idL = $norm(($profile['rp_id_label'] ?? '') ?: 'User ID:');
     $nameL = $norm($profile['rp_name_label'] ?? '');
     $perL = $norm($profile['rp_period_label'] ?? '');
-    $dayOff = max(1, (int)($profile['rp_day_row'] ?? 1));
+    // rows below the ID row with the day numbers; 0 = one row of day numbers for the whole sheet, above the
+    // employees (NBJ Logs), found by looking up from each ID row
+    $dayOff = max(0, (int)($profile['rp_day_row'] ?? 1));
     $timeOff = max(1, (int)($profile['rp_time_row'] ?? 2));
     $dateFmt = trim((string)($profile['rp_date_format'] ?? '')) ?: 'Y-m-d';
     // the value after a label: in the same cell after the label, else the next filled cell to the right
@@ -741,11 +943,19 @@ function parse_report_file(string $path, array $profile, ?array $range = null, i
     $start = $end = null;
     if ($perL !== '') {
         foreach ($grid as $row) {
-            foreach ($row as $v) {
+            foreach ($row as $pc => $v) {
                 if (strpos($norm($v), $perL) !== 0) {
                     continue;
                 }
-                preg_match_all('#\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}#', (string)$v, $m);
+                // the dates in the label cell (JJM: "Attendance date:2026-10-15~2026-10-28") or in the next cells of the
+                // row (NBJ: "Att. Time" | "2024-02-09 ~ 2024-02-23")
+                $txt = (string)$v;
+                foreach ($row as $c2 => $v2) {
+                    if ($c2 > $pc && count(preg_split('#\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}#', $txt)) < 3) {
+                        $txt .= ' ' . $v2;
+                    }
+                }
+                preg_match_all('#\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}#', $txt, $m);
                 $ds = [];
                 foreach ($m[0] as $tok) {
                     $dt = DateTime::createFromFormat('!' . $dateFmt, $tok) ?: (strtotime($tok) ? new DateTime($tok) : null);
@@ -798,9 +1008,17 @@ function parse_report_file(string $path, array $profile, ?array $range = null, i
     foreach ($blocks as $bi => $b) {
         $next = $blocks[$bi + 1]['row'] ?? $lastRow + 1;
         // the day numbers: the configured row, else the nearest row below the ID with day numbers
-        $dayRowNo = $b['row'] + $dayOff;
         $count = fn($rn) => count(array_filter($grid[$rn] ?? [], $isDay));
-        if ($count($dayRowNo) < 1) {
+        $dayRowNo = $b['row'] + $dayOff;
+        if ($dayOff === 0) {
+            $dayRowNo = -1;
+            for ($rn = $b['row'] - 1; $rn >= 0; $rn--) {
+                if ($count($rn) >= 2) {
+                    $dayRowNo = $rn;
+                    break;
+                }
+            }
+        } elseif ($count($dayRowNo) < 1) {
             for ($rn = $b['row'] + 1; $rn < min($next, $b['row'] + 4); $rn++) {
                 if ($count($rn) >= 2) {
                     $dayRowNo = $rn;

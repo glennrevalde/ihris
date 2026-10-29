@@ -37,7 +37,7 @@ If the database can't be reached or hasn't been imported yet, `index.php` shows 
 
 Copy the updated files over the old ones and open the site. `index.php` checks the `db_version`
 setting and applies every missing database change itself (new tables, new columns, new settings),
-so nothing has to be imported by hand. The current database version is **19**. Every company database
+so nothing has to be imported by hand. The current database version is **20**. Every company database
 (see section 12) upgrades itself the same way the first time it is opened.
 
 If you would rather run the SQL yourself (or the web user has no `ALTER`/`CREATE` rights), select
@@ -100,6 +100,8 @@ your HRIS database (for example `hris_web`) in phpMyAdmin and import, in order, 
 * `database/upgrade_to_v19_mysql55.sql` — the import of an attendance record report in Excel (layout `report` of `import_profiles`
   with `rp_id_label`, `rp_name_label`, `rp_period_label`, `rp_date_format`, `rp_day_row`, `rp_time_row`, `rp_sheet`), the minimum minutes
   between logs of every import configuration (`import_profiles.min_gap`) and the ready-made **JJM Logs** configuration.
+* `database/upgrade_to_v20_mysql55.sql` — the ready-made **NBJ Logs** configuration and the Other biometric IDs of an employee
+  (`employee_bio_ids`: the user ID of the same person on another terminal or log file).
 
 The scripts are written for MySQL 5.5 (no `ADD COLUMN IF NOT EXISTS`; a small stored procedure
 checks `information_schema` first), are safe to run more than once and never touch existing rows
@@ -195,6 +197,18 @@ Demo data covers **August–September 2026**: August has approved cutoffs and fi
 | Duplicate logs | `# of minutes between LOGS w/ same TYPE as INVALID` again drops only a repeat of the same log type (or of two untyped punches), so a short 15-minute break is always kept. |
 | Multi-location hours listed by Co. / Branch | Payroll Batch Transaction and Attendance Batch Transaction Entry: choosing a company / branch lists its employees **and** everyone whose multi-location entry has hours there. Their row shows only the hours of that branch (*Part of a multi-location transaction*); saving it changes that location and the total becomes the sum of the locations again. All companies lists every transaction whole. |
 | Payroll Register and payslips by branch | Payroll Batch Register → Co. / Branch: the employees of the branch plus the multi-location employees who worked there, each with only the pay earned in that branch, its share of the employer contributions and the deductions when it is the deduction source (*Branch part*). The branch totals of all branches add up to the *All* register. **Branch payslip** opens the payslip on that branch's tab. Print Payslips with a company / branch prints the branch payslip of those employees; with All, one consolidated payslip each (or split). Print and CSV export follow the same filter. |
+
+### Additions in version 24
+
+Database version 20: open the site once (it upgrades by itself) or import `database/upgrade_to_v20_mysql55.sql` (MySQL 5.5; after the version 19 script if it was not imported yet).
+
+| Request | Where in the app |
+|---|---|
+| Repair the log error displayed in the Daily Time Record | Print DTR (and the DTR screen): a day whose Break in (or Break out) log is missing printed a PHP *Deprecated: strtotime()* message and an invented *08:00*. The Break column now shows the log that is there and a red **?** for the missing one (*12:09–?*); a 6-log shift shows its second break below the first. |
+| No late within the grace period (AMS Policies: "Tardiness within the grace period is not deducted") | The daily time record computes **no late** when the late is within the grace period (AMS Policies & Configuration, or the grace of the shift; none on a strict-time shift): 08:16 on an 08:15 shift with a 2-minute grace is on time, and the minute counts as rendered. Beyond the grace the whole late shows and *When late beyond grace, deduct* applies on the summary as before. The Attendance Entry recomputes the days when opened (a day saved by hand: ReCalc logs). |
+| A button "Select Logs" that selects the logs of the From Date and To Date | Import Attendance Logs → staged logs: **Select logs** ticks every staged log of *Post from* / *to*; when the list has more than one page (or is shown by day), the logs of those dates open on one page, already ticked, with *n log(s) selected*. New filter **Log dates from / to**. |
+| NBJ Logs import configuration | Import Log Configuration → **NBJ Logs** (ready-made, layout *Attendance record report*): Employee ID label `ID:` (ID in column C), Name label `Name:`, Period label `Att. Time` (dates `2024-02-09 ~ 2024-02-23` in the next cell, format `Y-m-d`), **Day-number row 0** (one row of day numbers at the top of the sheet: 9, 10 … 23), **First time row 1** (the row under each ID row), Sheet 1, Minimum minutes between logs 5. The times of a day are run together in one cell (`08:3017:20` = 08:30 and 17:20; `07:4617:0518:2620:00` = four logs). Day-number row 0 is available to any report configuration. |
+| Read the logs of one employee from different Excel files, in either format (JJM Logs and NBJ Logs) | Import Attendance Logs → From file: choose the files together. An Excel report is read with the report configuration whose labels it carries (*nbj.xls is in the NBJ Logs format: read with that configuration*). The employee is matched by the Biometric ID **or the new Other biometric IDs** (Employee Masterfile → Edit; Assign on an unknown ID adds it there when the employee already has a Biometric ID). The same punch in two files (same employee, within the minimum minutes between logs) is staged once, and two exports of one punch with different seconds are one punch. Once every file is in, the punches of each employee-day are placed together by the shift code (08:00 from JJM + 12:00, 13:00, 17:00 from NBJ = Time in, Break out, Break in, Time out). |
 
 ### Additions in version 23
 

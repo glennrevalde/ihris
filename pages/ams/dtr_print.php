@@ -13,6 +13,15 @@ foreach ($rows as $r) {
     $byDate[$r['work_date']] = $r;
 }
 $t = ['reg' => 0, 'late' => 0, 'ut' => 0, 'ot' => 0, 'nd' => 0];
+// v24: a break with a missing log shows the log that is there and a dash for the missing one (12:09–?), never an
+// invented 08:00 or a PHP notice; a 6-log shift shows its second break below the first
+$brk = function (?string $out, ?string $in): string {
+    if (!$out && !$in) {
+        return '';
+    }
+    $hm = fn(?string $t) => $t ? date('H:i', strtotime($t)) : '<span title="No log" style="color:#b42318;font-weight:700">?</span>';
+    return $hm($out) . '–' . $hm($in);
+};
 print_header('Daily Time Record — ' . full_name($e));
 echo company_letterhead(row('SELECT * FROM branches WHERE id = ?', [$e['default_branch_id']]));
 ?>
@@ -33,7 +42,7 @@ echo company_letterhead(row('SELECT * FROM branches WHERE id = ?', [$e['default_
           $t['nd'] += $r['nd_minutes'] + $r['nd_ot_minutes'];
       } ?>
     <tr><td class="nowrap"><?= h(fmt_date($day, 'D m/d')) ?></td><td><?= $r ? h(label($r['day_type'])) : '' ?></td><td><?= h($r['branch_code'] ?? '') ?></td>
-      <td><?= $r ? h(fmt_time($r['time_in'])) : '' ?></td><td class="nowrap"><?= $r && $r['break_out'] ? h(date('H:i', strtotime($r['break_out']))) . '–' . h(date('H:i', strtotime($r['break_in']))) : '' ?></td><td><?= $r ? h(fmt_time($r['time_out'])) : '' ?></td>
+      <td><?= $r ? h(fmt_time($r['time_in'])) : '' ?></td><td class="nowrap"><?= $r ? $brk($r['break_out'] ?? null, $r['break_in'] ?? null) . (!empty($r['break_out2']) || !empty($r['break_in2']) ? '<br>' . $brk($r['break_out2'] ?? null, $r['break_in2'] ?? null) : '') : '' ?></td><td><?= $r ? h(fmt_time($r['time_out'])) : '' ?></td>
       <td class="num"><?= $r && $r['regular_minutes'] ? hours($r['regular_minutes']) : '' ?></td><td class="num"><?= $r['late_minutes'] ?? '' ?: '' ?></td><td class="num"><?= $r['undertime_minutes'] ?? '' ?: '' ?></td>
       <td class="num"><?= $r && $r['approved_ot_minutes'] ? hours($r['approved_ot_minutes']) : '' ?></td><td class="num"><?= $r && ($r['nd_minutes'] + $r['nd_ot_minutes']) ? hours($r['nd_minutes'] + $r['nd_ot_minutes']) : '' ?></td>
       <td class="small"><?= $r && !in_array($r['status'], ['present'], true) ? h(label($r['status'])) : '' ?> <?= h($r['remarks'] ?? '') ?></td></tr>

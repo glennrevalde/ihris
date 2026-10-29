@@ -957,6 +957,18 @@ function dtr_collect_punches(int $empId, array $sched, string $date): array
     return $res;
 }
 
+/** v24: grace period of a shift: none on a strict-time shift, the shift's own grace, else AMS Policies & Configuration. */
+function dtr_grace_minutes(?array $shift, array $c): int
+{
+    if ($shift && !empty($shift['strict_time'])) {
+        return 0;
+    }
+    if ($shift && isset($shift['grace_minutes']) && $shift['grace_minutes'] !== null && $shift['grace_minutes'] !== '') {
+        return max(0, (int)$shift['grace_minutes']);
+    }
+    return max(0, (int)$c['grace']);
+}
+
 /**
  * Build / refresh the DTR row of one employee for one date.
  * Manually-overridden rows keep their encoded times but minutes are recomputed.
@@ -1086,9 +1098,15 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
             $d['status'] = 'present';
             $d['regular_minutes'] = $reg;
             $d['worked_minutes'] = $reg;
+            $d['undertime_minutes'] = max(0, $req - $reg - $late) + $c['inc_penalty'];
+            if ($late > 0 && $late <= dtr_grace_minutes($shift, $c)) {
+                // v24: within the grace period = not late, and the minutes count as rendered
+                $d['regular_minutes'] = $d['worked_minutes'] = min($req, $reg + $late);
+                $d['undertime_minutes'] = max(0, $req - $d['regular_minutes']) + $c['inc_penalty'];
+                $late = 0;
+            }
             $d['late_minutes'] = $late;
             $d['penalty_minutes'] = $c['inc_penalty'];
-            $d['undertime_minutes'] = max(0, $req - $reg - $late) + $c['inc_penalty'];
         } else {
             $d['status'] = 'incomplete';
         }
@@ -1247,6 +1265,13 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
                 $late = min($late, max(0, $req - $d['absent_minutes']));
                 $ut = min($ut, max(0, $req - $d['absent_minutes'] - $late));
                 $penalty = min($penalty, $late);
+                // v24: tardiness within the grace period (AMS Policies & Configuration, or the grace of the shift) is
+                // not late at all: no late minutes on the daily time record, the Attendance Entry or the summary. Beyond
+                // the grace, the late stays whole here and "When late beyond grace, deduct" decides what is deducted.
+                if ($late - $penalty > 0 && $late - $penalty <= dtr_grace_minutes($shift, $c)) {
+                    $reg = min($maxReg, $reg + ($late - $penalty));   // the minutes of the grace count as rendered
+                    $late = $penalty;
+                }
                 $d['late_minutes'] = $late;
                 $d['undertime_minutes'] = $ut;
                 $d['penalty_minutes'] = $penalty;
@@ -1374,7 +1399,7 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
  * interval policy), so records computed by an older version are rebuilt the first time they are
  * shown or summarized. Locked (approved) days are never touched.
  */
-const DTR_CALC_VERSION = 9;   // 9 (v22): a lone terminal punch placed by the schedule; 6 (v16): pre-arranged overtime; 7 (v17): logs outside the shift, late capped at the shift hours; 8 (v18): day-off of the shift / masterfile on shift-only overrides
+const DTR_CALC_VERSION = 10;   // 10 (v24): a late within the grace period is not late; 9 (v22): a lone terminal punch placed by the schedule; 6 (v16): pre-arranged overtime; 7 (v17): logs outside the shift, late capped at the shift hours; 8 (v18): day-off of the shift / masterfile on shift-only overrides
 
 /** Rebuild the unlocked days of one employee computed by an older version of the engine. Returns the number rebuilt. */
 function dtr_refresh_stale(int $empId, string $from, string $to): int

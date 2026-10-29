@@ -67,6 +67,9 @@ if (is_post()) {
     if ($isNew) {
         $res = employee_create($d, ['create_account' => (bool)post('create_account'), 'temp_password' => post('temp_password'), 'via' => 'form']);
         employee_save_background((int)$res['id'], $_POST);
+        foreach (employee_bio_ids_save((int)$res['id'], (string)post('bio_ids_other', '')) as $m) {
+            flash('warning', $m);   // v24: Other biometric IDs
+        }
         if ($res['account']) {
             flash('info', sprintf('Portal account created: username "%s", temporary password "%s" (must be changed at first sign-in).', $res['account']['username'], $res['account']['password']));
         }
@@ -90,6 +93,9 @@ if (is_post()) {
     }
     $bgOld = employee_background($id);
     employee_save_background($id, $_POST);
+    foreach (employee_bio_ids_save($id, (string)post('bio_ids_other', '')) as $m) {
+        flash('warning', $m);   // v24: Other biometric IDs
+    }
     $strip = fn(array $b) => array_map(fn($l) => array_map(fn($r) => array_diff_key($r, ['id' => 1, 'sort_order' => 1]), $l), $b);
     if ($strip($bgOld) !== $strip(employee_background($id))) {
         audit('pis', 'employee_background_update', 'employees', $id, ['children' => count($_POST['children']['name'] ?? []), 'education' => count($_POST['educ']['school'] ?? []),
@@ -225,6 +231,10 @@ page_header($isNew ? 'New Employee' : 'Edit Employee — ' . full_name($emp, fal
   <div class="form-grid">
     <?= $F('employee_no', ['label' => 'Employee No.', 'required' => true]) ?>
     <?= $F('biometric_id', ['label' => 'Biometric ID', 'help' => 'User ID enrolled in the biometric device.']) ?>
+    <?php if (bio_alt_supported()): ?>
+      <?= form_field('bio_ids_other', ['label' => 'Other biometric IDs', 'help' => 'The user ID of this employee on other terminals or log files (JJM Logs, NBJ Logs …) when it differs, e.g. 12, 2025017. Separate with commas.'],
+          $v['bio_ids_other'] ?? ($emp ? implode(', ', employee_bio_ids((int)$emp['id'])) : '')) ?>
+    <?php endif; ?>
     <?= $F('date_hired', ['label' => 'Date hired', 'type' => 'date', 'required' => true]) ?>
     <?= $F('date_regularized', ['label' => 'Date regularized', 'type' => 'date']) ?>
     <?= $F('employment_status', ['label' => 'Employment status', 'type' => 'select', 'options' => EMPLOYMENT_STATUSES, 'required' => true,

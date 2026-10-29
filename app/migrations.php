@@ -15,7 +15,7 @@
  */
 require_once __DIR__ . '/engine/paytrans.php';
 
-const DB_VERSION = 19;
+const DB_VERSION = 20;
 
 function db_version(): int
 {
@@ -1228,10 +1228,38 @@ function migration_v19(): array
     ]];
 }
 
+/**
+ * Version 20 (v24 requests): the NBJ Logs configuration (Attendance Record Report .xls: "ID:" blocks, one row of day
+ * numbers at the top, the times of a day run together) and the Other biometric IDs of an employee (the user ID of the
+ * same person on another terminal or in another log file, so the logs of one employee in several files are matched).
+ */
+function migration_v20(): array
+{
+    $e = ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4';
+    return ['tables' => [
+        'employee_bio_ids' => "CREATE TABLE IF NOT EXISTS employee_bio_ids (
+  id INT NOT NULL AUTO_INCREMENT,
+  employee_id INT NOT NULL,
+  bio_id VARCHAR(20) NOT NULL COMMENT 'Another biometric / device user ID of the employee',
+  note VARCHAR(80) NULL,
+  created_at DATETIME NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_emp_bio_id (bio_id),
+  KEY idx_emp_bio_emp (employee_id)
+)$e",
+    ], 'columns' => [], 'modify' => [], 'settings' => [], 'seeds' => [], 'data' => [
+        "INSERT INTO import_profiles (name, layout, delimiter, has_header, col_bio_id, datetime_format, notes, rp_id_label, rp_name_label, rp_period_label, rp_date_format,
+                                      rp_day_row, rp_time_row, rp_sheet, min_gap, is_default, sort_order)
+         SELECT 'NBJ Logs', 'report', 'tab', 0, 1, 'Y-m-d H:i:s', 'Attendance Record Report (.xls): Att. Time period, one row of day numbers at the top, ID / Name / Dept. blocks, the times of each day run together',
+                'ID:', 'Name:', 'Att. Time', 'Y-m-d', 0, 1, 1, 5, 0, m.so
+         FROM (SELECT COALESCE(MAX(sort_order), 0) + 1 AS so, SUM(name = 'NBJ Logs') AS n FROM import_profiles) m WHERE COALESCE(m.n, 0) = 0",
+    ]];
+}
+
 /** Every upgrade step in order: version => definitions. */
 function migrations_all(): array
 {
-    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19'];
+    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20'];
 }
 
 function mig_table_exists(string $t): bool
@@ -1400,7 +1428,8 @@ function db_upgrade_sql(int $version = DB_VERSION): string
         '16' => 'Cancel Calculation of the final pay, day-off of the shift on per-date shift changes',
         '17' => 'order of the import configurations',
         '18' => 'Employee Loan / Deduction Request and its approval',
-        '19' => 'Attendance record report import (JJM Logs) and the minimum minutes between logs'][(string)$version] ?? '';
+        '19' => 'Attendance record report import (JJM Logs) and the minimum minutes between logs',
+        '20' => 'NBJ Logs import configuration and the other biometric IDs of an employee'][(string)$version] ?? '';
     $q = fn($v) => $v === null ? 'NULL' : "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], (string)$v) . "'";
     $out = [];
     $out[] = "-- =====================================================================";

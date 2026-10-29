@@ -39,7 +39,7 @@ if (is_post()) {
         // v22: attendance record report (Excel) and the minimum minutes between logs
         $data += ['rp_id_label' => mb_substr(trim((string)post('rp_id_label')), 0, 40) ?: 'User ID:', 'rp_name_label' => mb_substr(trim((string)post('rp_name_label')), 0, 40) ?: null,
             'rp_period_label' => mb_substr(trim((string)post('rp_period_label')), 0, 40) ?: null, 'rp_date_format' => mb_substr(trim((string)post('rp_date_format')), 0, 20) ?: 'Y-m-d',
-            'rp_day_row' => max(1, min(9, (int)post('rp_day_row') ?: 1)), 'rp_time_row' => max(1, min(9, (int)post('rp_time_row') ?: 2)),
+            'rp_day_row' => post('rp_day_row') === '' ? 1 : max(0, min(9, (int)post('rp_day_row'))), 'rp_time_row' => max(1, min(9, (int)post('rp_time_row') ?: 2)),
             'rp_sheet' => max(1, min(50, (int)post('rp_sheet') ?: 1)), 'min_gap' => max(0, min(120, (int)post('min_gap')))];
     }
     foreach (['id', 'date', 'time', 'type', 'dev'] as $k) {
@@ -160,18 +160,18 @@ page_header('Import Log Configuration', [
       <?php if ($rpOk): ?>
       <fieldset class="box" id="fxReport">
         <legend>Attendance record report (Excel)</legend>
-        <p class="muted small">One block per employee: the ID label with the ID in the next cell, a row of day numbers under it, and the times of each day under its number (several times in one cell, one per line; more rows below when the day has more logs). The year and month come from the period label. The report has no In / Out: the employee's shift code places the logs.</p>
+        <p class="muted small">One block per employee: the ID label with the ID in the next cell, the day numbers (under each ID row, or once at the top of the sheet), and the times of each day under its number (several times in one cell, one per line or run together as 08:3017:20; more rows below when the day has more logs). The year and month come from the period label. The report has no In / Out: the employee's shift code places the logs.</p>
         <div class="form-grid cols-3">
           <div class="field"><label>Employee ID label</label><input name="rp_id_label" value="<?= $v('rp_id_label', 'User ID:') ?>" maxlength="40">
-            <span class="help">The ID is the next filled cell to the right (or the text after the label in the same cell). It must match the Biometric ID of the masterfile.</span></div>
+            <span class="help">The ID is the next filled cell to the right (or the text after the label in the same cell). It must match the Biometric ID (or one of the Other biometric IDs) of the masterfile.</span></div>
           <div class="field"><label>Employee name label</label><input name="rp_name_label" value="<?= $v('rp_name_label', 'Name:') ?>" maxlength="40">
             <span class="help">For the preview and the log details only.</span></div>
           <div class="field"><label>Period label</label><input name="rp_period_label" value="<?= $v('rp_period_label', 'Attendance date:') ?>" maxlength="40">
-            <span class="help">e.g. <code>Attendance date:2026-10-15~2026-10-28</code>. Without it the Date from of the upload gives the month.</span></div>
+            <span class="help">e.g. <code>Attendance date:2026-10-15~2026-10-28</code> (JJM) or <code>Att. Time</code> with the dates in the next cell (NBJ). Without it the Date from of the upload gives the month.</span></div>
           <div class="field"><label>Period date format</label><input name="rp_date_format" value="<?= $v('rp_date_format', 'Y-m-d') ?>" maxlength="20">
             <span class="help"><code>Y-m-d</code> = 2026-10-15, <code>m/d/Y</code> = 10/15/2026</span></div>
-          <div class="field"><label>Day-number row</label><input type="number" min="1" max="9" name="rp_day_row" value="<?= $v('rp_day_row', 1) ?>">
-            <span class="help">Rows below the ID row (1 = the next row).</span></div>
+          <div class="field"><label>Day-number row</label><input type="number" min="0" max="9" name="rp_day_row" value="<?= $v('rp_day_row', 1) ?>">
+            <span class="help">Rows below the ID row (1 = the next row, JJM Logs). 0 = one row of day numbers for the whole sheet, at the top (NBJ Logs).</span></div>
           <div class="field"><label>First time row</label><input type="number" min="1" max="9" name="rp_time_row" value="<?= $v('rp_time_row', 2) ?>">
             <span class="help">Rows below the ID row; the times continue down to the next ID row.</span></div>
           <div class="field"><label>Sheet</label><input type="number" min="1" max="50" name="rp_sheet" value="<?= $v('rp_sheet', 1) ?>">
@@ -233,7 +233,9 @@ page_header('Import Log Configuration', [
     <table class="table table-compact">
       <thead><tr><th>Line</th><th>Employee / bio ID</th><th>Matched employee</th><th>Date &amp; time</th><th>Log type</th><th><?= !empty($preview['report']) ? 'Read from' : 'Device' ?></th><th>Error</th></tr></thead>
       <tbody>
-      <?php $bioMap = pairs('SELECT biometric_id, CONCAT(last_name, ", ", first_name) FROM employees WHERE biometric_id IS NOT NULL AND biometric_id <> ""');
+      <?php // v24: the masterfile Biometric ID and the Other biometric IDs of the employees
+      $names = pairs('SELECT id, CONCAT(last_name, ", ", first_name) FROM employees');
+      $bioMap = array_map(fn($e) => $names[$e] ?? '—', bio_employee_map());
       foreach ($preview['rows'] as $r):
           $key = ltrim((string)$r['bio_id'], '0') ?: (string)$r['bio_id']; ?>
         <tr class="<?= $r['error'] ? 'row-bad' : '' ?>">

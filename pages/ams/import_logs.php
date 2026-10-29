@@ -138,6 +138,11 @@ $perOpts = [100 => '100 a page', 500 => '500 a page', 1000 => '1,000 a page', 25
 $per = array_key_exists((int)get('per', 500), $perOpts) ? (int)get('per', 500) : 500;
 $pg = max(1, (int)get('pg', 1));
 $statusF = (string)get('status', '');
+// v24: the staged logs of some dates only (Log dates from / to); "Select logs" opens them all with every log ticked
+$okD = fn($d) => (bool)preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$d);
+$dFromF = $okD(get('dfrom')) ? (string)get('dfrom') : '';
+$dToF = $okD(get('dto')) ? (string)get('dto') : '';
+$selectRange = get('select') === '1' && $dFromF !== '' && $dToF !== '';
 $view = get('view') === 'days' ? 'days' : 'list';   // list = one row per punch, days = Attendance Entry format
 
 if (is_post()) {
@@ -183,6 +188,7 @@ if (is_post()) {
                 $ids = [];
                 $msgs = [];
                 $tot = ['read' => 0, 'staged' => 0, 'duplicates' => 0, 'errors' => 0, 'outside' => 0];
+                $untypedIds = [];
                 foreach ($files as &$f) {
                     $ext = strtolower((string)pathinfo($f['name'], PATHINFO_EXTENSION));
                     if (!in_array($ext, ['dat', 'txt', 'log', 'csv', 'tsv', 'xls', 'xlsx', 'htm', 'html'], true)) {
@@ -195,7 +201,16 @@ if (is_post()) {
                     // v22: an Excel report (JJM Logs) is read only with a report configuration, and a report configuration only reads reports
                     $isReport = ($f['profile']['layout'] ?? '') === 'report';
                     if (in_array($ext, ['xls', 'xlsx'], true) && !$isReport) {
-                        throw new RuntimeException($f['name'] . ' is an Excel file: choose a configuration of the layout "Attendance record report", such as JJM Logs.');
+                        throw new RuntimeException($f['name'] . ' is an Excel file: choose a configuration of the layout "Attendance record report", such as JJM Logs or NBJ Logs.');
+                    }
+                    // v24: an Excel report is read with the report configuration whose labels it carries (JJM Logs: "User ID:",
+                    // NBJ Logs: "ID:" and one row of day numbers at the top), whichever of them was chosen for the file
+                    if ($isReport) {
+                        $fit = import_report_profile_for($f['tmp'], $profiles, $f['profile']);
+                        if ($fit && (int)$fit['id'] !== (int)$f['profile']['id']) {
+                            flash('info', $f['name'] . ' is in the ' . $fit['name'] . ' format: read with that configuration instead of ' . $f['profile']['name'] . '.');
+                            $f['profile'] = $fit;
+                        }
                     }
                     $f['typed'] = ($f['profile']['layout'] === 'fixed' ? (int)$f['profile']['fw_type_width'] > 0 : (bool)$f['profile']['col_punch']) && trim((string)$f['profile']['punch_map']) !== '';
                 }
@@ -215,7 +230,11 @@ if (is_post()) {
                         $r['branch_id'] = $branch;
                     }
                     unset($r);
-                    $st = staging_insert($rows, 'file', $batch);
+                    // v24: a punch already staged from another file of this upload (same employee, within the minimum
+                    // minutes between logs) is the same punch; the untyped ones are placed again once every file is in
+                    $st = staging_insert($rows, 'file', $batch, ['group' => $ids, 'min_gap' => (int)($profile['min_gap'] ?? 0)]);
+                    $untypedIds = array_merge($untypedIds, $st['untyped_ids']);
+                    unset($st['untyped_ids']);
                     update('import_batches', ['imported' => $st['staged'], 'duplicates' => $st['duplicates'], 'flagged' => $st['errors']], 'id = ?', [$batch]);
                     audit('ams', 'import_file_stage', 'import_batches', $batch, $st + ['from' => $from, 'to' => $to, 'outside_dates' => $outside]);
                     $ids[] = $batch;
@@ -226,6 +245,13 @@ if (is_post()) {
                     }
                     $msgs[] = sprintf('%s (%s): %d staged, %d duplicate(s), %d error(s)%s.', $f['name'], $profile['name'], $st['staged'], $st['duplicates'], $st['errors'],
                         $outside ? ', ' . number_format($outside) . ' log(s) outside the dates skipped' : '');
+                }
+                if (count($files) > 1 && $untypedIds) {
+                    // the punches of one employee-day from different files (JJM Logs + NBJ Logs, Company A + B) placed together
+                    $moved = staging_reclassify($untypedIds);
+                    if ($moved) {
+                        flash('info', $moved . ' log(s) placed again with the punches of the same day from the other files (Time in, Break out, Break in, Time out).');
+                    }
                 }
                 flash($tot['staged'] ? 'success' : 'warning', sprintf('%d file(s), %s to %s: %d log(s) read, %d staged, %d duplicate(s), %d error(s)%s.', count($files), fmt_date($from), fmt_date($to),
                     $tot['read'], $tot['staged'], $tot['duplicates'], $tot['errors'], $tot['outside'] ? ', ' . number_format($tot['outside']) . ' outside the dates not staged' : ''));
@@ -295,7 +321,17 @@ if (is_post()) {
                 if ($r && $emp) {
                     update('log_staging', ['employee_id' => $emp, 'status' => 'pending', 'remarks' => 'Employee assigned manually'], 'id = ?', [$id]);
                     if (post('remember') && $r['bio_id']) {
-                        q('UPDATE employees SET biometric_id = ? WHERE id = ?', [$r['bio_id'], $emp]);
+                        // v24: an employee who already has another Biometric ID keeps it; this one is added to the
+                        // Other biometric IDs (the user ID of the same person on another terminal or log format)
+                        $cur = (string)val('SELECT biometric_id FROM employees WHERE id = ?', [$emp]);
+                        if ($cur !== '' && $cur !== (string)$r['bio_id'] && bio_alt_supported()) {
+                            if (!(int)val('SELECT COUNT(*) FROM employee_bio_ids WHERE bio_id = ?', [$r['bio_id']]) && !(int)val('SELECT COUNT(*) FROM employees WHERE biometric_id = ?', [$r['bio_id']])) {
+                                insert('employee_bio_ids', ['employee_id' => $emp, 'bio_id' => (string)$r['bio_id'], 'note' => 'Import Attendance Logs', 'created_at' => now()]);
+                                audit('pis', 'employee_bio_ids', 'employees', $emp, ['added' => (string)$r['bio_id']]);
+                            }
+                        } else {
+                            q('UPDATE employees SET biometric_id = ? WHERE id = ?', [$r['bio_id'], $emp]);
+                        }
                         q("UPDATE log_staging SET employee_id = ?, status = 'pending' WHERE bio_id = ? AND status = 'error'", [$emp, $r['bio_id']]);
                     }
                     flash('success', 'Employee assigned to the log.');
@@ -308,7 +344,7 @@ if (is_post()) {
         flash('error', $e->getMessage());
     }
     redirect('import_logs', array_filter(['batch_id' => $batchId ?: null, 'batches' => $batchIds ? implode(',', $batchIds) : null, 'status' => $statusF ?: null, 'q' => $qF !== '' ? $qF : null,
-        'view' => $view === 'days' ? 'days' : null, 'per' => $per !== 500 ? $per : null]));
+        'view' => $view === 'days' ? 'days' : null, 'per' => $per !== 500 ? $per : null, 'dfrom' => $dFromF ?: null, 'dto' => $dToF ?: null]));
 }
 
 $where = [];
@@ -324,6 +360,14 @@ if ($qF !== '') {
     $params[] = $qF;
     $w = search_words_sql(['e.employee_no', 'e.last_name', 'e.first_name', 'e.biometric_id'], $qF, $params);
     $where[] = '(s.bio_id = ?' . ($w ? ' OR ' . $w : '') . ')';
+}
+if ($dFromF !== '') {
+    $where[] = 's.log_time >= ?';
+    $params[] = $dFromF . ' 00:00:00';
+}
+if ($dToF !== '') {
+    $where[] = 's.log_time <= ?';
+    $params[] = $dToF . ' 23:59:59';
 }
 if ($statusF) {
     $where[] = 's.status = ?';
@@ -342,7 +386,7 @@ $list = rows('SELECT s.*, e.employee_no, e.first_name, e.last_name, e.middle_nam
 $shownFrom = $total ? ($per && $view !== 'days' ? ($pg - 1) * $per + 1 : 1) : 0;
 $shownTo = $per && $view !== 'days' ? min($total, $pg * $per) : min($total, count($list));
 $listKeep = array_filter(['batch_id' => $batchId ?: null, 'batches' => $batchIds ? implode(',', $batchIds) : null, 'status' => $statusF ?: null, 'q' => $qF !== '' ? $qF : null,
-    'view' => $view === 'days' ? 'days' : null, 'per' => $per !== 500 ? $per : null], fn($v) => $v !== null);
+    'view' => $view === 'days' ? 'days' : null, 'per' => $per !== 500 ? $per : null, 'dfrom' => $dFromF ?: null, 'dto' => $dToF ?: null], fn($v) => $v !== null);
 $pager = function () use ($pg, $pages, $listKeep, $total, $shownFrom, $shownTo) {
     if ($pages <= 1) {
         return '';
@@ -366,6 +410,9 @@ $stats = staging_stats($batchId ?: null);
 $pw = $batchId ? ' AND batch_id = ' . $batchId : ($batchIds ? ' AND batch_id IN (' . implode(',', $batchIds) . ')' : '');
 $pr = row("SELECT MIN(DATE(log_time)) AS a, MAX(DATE(log_time)) AS b FROM log_staging WHERE status = 'pending'" . $pw);
 $postRange = [$pr['a'] ?? date('Y-m-01'), $pr['b'] ?? today()];
+if ($dFromF !== '' && $dToF !== '') {
+    $postRange = [$dFromF, $dToF];   // v24: the dates of the list shown (Select logs, Log dates from / to)
+}
 $batches = rows('SELECT b.*, u.full_name AS user_name, (SELECT COUNT(*) FROM log_staging s WHERE s.batch_id = b.id) AS staged
                  FROM import_batches b LEFT JOIN users u ON u.id = b.uploaded_by
                  WHERE b.batch_type IN ("biometric","device","log_table") ORDER BY b.id DESC LIMIT 20');
@@ -391,7 +438,7 @@ page_header('Customized Import Attendance Log', [
 <div class="grid grid-3">
   <div class="card stage-card">
     <h2>From file</h2>
-    <p class="muted small">TAB / CSV / fixed-width .dat, .txt or .log exported by the terminals, or an Excel attendance report (.xls, e.g. JJM Logs). Choose one, two, three or more files at once, e.g. the logs of the devices of Company A, B and C.</p>
+    <p class="muted small">TAB / CSV / fixed-width .dat, .txt or .log exported by the terminals, or an Excel attendance report (.xls, e.g. JJM Logs or NBJ Logs). Choose one, two, three or more files at once, e.g. the logs of the devices of Company A, B and C.</p>
     <form method="post" enctype="multipart/form-data" id="stageForm">
       <?= csrf_field() ?><input type="hidden" name="_action" value="file">
       <div class="field"><label>Import configuration</label><select name="profile_id" required>
@@ -466,6 +513,8 @@ page_header('Customized Import Attendance Log', [
   <label>Status<select name="status" data-autosubmit><?= options(['pending' => 'Pending', 'error' => 'With error', 'duplicate' => 'Duplicate', 'posted' => 'Posted'], $statusF, 'All statuses') ?></select></label>
   <?php if ($batchIds): ?><input type="hidden" name="batches" value="<?= h(implode(',', $batchIds)) ?>"><?php endif; ?>
   <label class="grow">Find<input type="search" name="q" value="<?= h($qF) ?>" placeholder="Employee name, no. or biometric ID" autocomplete="off"></label>
+  <label>Log dates from<input type="date" name="dfrom" value="<?= h($dFromF) ?>"></label>
+  <label>to<input type="date" name="dto" value="<?= h($dToF) ?>"></label>
   <?php if ($view !== 'days'): ?><label>Show<select name="per" data-autosubmit><?= options($perOpts, $per) ?></select></label><?php endif; ?>
   <?php if ($view === 'days'): ?><input type="hidden" name="view" value="days"><?php endif; ?>
   <button class="btn btn-primary">Show</button>
@@ -488,6 +537,10 @@ page_header('Customized Import Attendance Log', [
       <label for="postFrom">Post from</label><input type="date" name="post_from" id="postFrom" value="<?= h($postRange[0]) ?>" required>
       <label for="postTo">to</label><input type="date" name="post_to" id="postTo" value="<?= h($postRange[1]) ?>" required>
     </span>
+    <button type="button" class="btn" id="selectLogs" data-paged="<?= $pages > 1 || $view === 'days' ? '1' : '0' ?>"
+      data-url="<?= h(url('import_logs', array_diff_key($listKeep, ['dfrom' => 1, 'dto' => 1, 'per' => 1, 'pg' => 1, 'view' => 1]) + ['per' => 0, 'select' => 1])) ?>"
+      title="Tick every staged log of Post from / to">Select logs</button>
+    <span class="muted small" id="selectedCount" aria-live="polite"></span>
     <button class="btn btn-primary" name="_action" value="post" data-confirm="Post the pending logs of these dates to the attendance records?">Post logs</button>
     <button class="btn" name="_action" value="delete" data-confirm="Delete the ticked staged logs?">Delete</button>
     <button class="btn btn-danger-outline" name="_action" value="delete_all" data-confirm="Delete every staged log of this selection? Posted attendance records are not affected.">Delete all logs</button>
@@ -551,7 +604,7 @@ page_header('Customized Import Attendance Log', [
         }
         foreach ($list as $r): ?>
           <tr class="<?= $r['status'] === 'error' ? 'row-bad' : ($r['status'] === 'duplicate' ? 'row-warn' : '') ?>">
-            <td><input type="checkbox" name="ids[]" value="<?= (int)$r['id'] ?>"></td>
+            <td><input type="checkbox" name="ids[]" value="<?= (int)$r['id'] ?>" data-date="<?= h(substr((string)$r['log_time'], 0, 10)) ?>"<?= $selectRange && $r['log_time'] && substr((string)$r['log_time'], 0, 10) >= $dFromF && substr((string)$r['log_time'], 0, 10) <= $dToF ? ' checked' : '' ?>></td>
             <td class="nowrap"><?= h($r['log_time'] ? fmt_dt($r['log_time']) : '—') ?></td>
             <td><?= h($r['bio_id']) ?></td>
             <td><?= $r['employee_id'] ? h(full_name($r)) . '<br><small class="muted">' . h($r['employee_no']) . '</small>' : '<span class="badge badge-red">unknown</span>' ?></td>
@@ -583,6 +636,7 @@ page_header('Customized Import Attendance Log', [
       <?= csrf_field() ?><input type="hidden" name="_action" value="assign"><input type="hidden" name="id">
       <div class="field"><label>Employee</label><select name="employee_id" required><?= options(employee_options(false), null, 'Select…') ?></select></div>
       <label class="check"><input type="checkbox" name="remember" value="1" checked> Save this biometric ID on the employee record and fix the other logs of the same ID</label>
+      <p class="muted small">An employee who already has a Biometric ID keeps it: this ID is added to the employee's Other biometric IDs (the same person on another terminal or log file).</p>
       <div class="form-actions"><button class="btn btn-primary">Assign</button><button type="button" class="btn" data-modal-close>Cancel</button></div>
     </form>
   </div>
@@ -615,6 +669,29 @@ page_header('Customized Import Attendance Log', [
   </div>
 </div>
 <script>
+(function () {
+  // v24: Select logs ticks every staged log of Post from / to; when the list has more than one page (or is shown by day),
+  // the logs of those dates are opened all on one page, already ticked
+  var btn = document.getElementById('selectLogs'), cnt = document.getElementById('selectedCount');
+  if (!btn) return;
+  var boxes = function () { return Array.prototype.slice.call(document.querySelectorAll('input[name="ids[]"][data-date]')); };
+  var show = function () {
+    var n = boxes().filter(function (b) { return b.checked; }).length;
+    cnt.textContent = n ? n.toLocaleString() + ' log(s) selected' : '';
+  };
+  btn.addEventListener('click', function () {
+    var f = (document.getElementById('postFrom') || {}).value, t = (document.getElementById('postTo') || {}).value;
+    if (!f || !t || t < f) { alert('Give Post from and to first (the To date on or after the From date).'); return; }
+    if (btn.getAttribute('data-paged') === '1') {
+      location.href = btn.getAttribute('data-url') + '&dfrom=' + encodeURIComponent(f) + '&dto=' + encodeURIComponent(t);
+      return;
+    }
+    boxes().forEach(function (b) { var d = b.getAttribute('data-date'); b.checked = d >= f && d <= t; });
+    show();
+  });
+  document.addEventListener('change', function (e) { if (e.target.matches && e.target.matches('input[name="ids[]"], [data-check-all]')) setTimeout(show, 0); });
+  show();
+})();
 (function () {
   // v19: the cut-off fills Date from / Date to; each chosen file gets its own configuration and company / branch
   var cut = document.getElementById('stageCut'), from = document.getElementById('stageFrom'), to = document.getElementById('stageTo');
