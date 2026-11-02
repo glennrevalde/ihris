@@ -198,6 +198,20 @@ Demo data covers **August–September 2026**: August has approved cutoffs and fi
 | Multi-location hours listed by Co. / Branch | Payroll Batch Transaction and Attendance Batch Transaction Entry: choosing a company / branch lists its employees **and** everyone whose multi-location entry has hours there. Their row shows only the hours of that branch (*Part of a multi-location transaction*); saving it changes that location and the total becomes the sum of the locations again. All companies lists every transaction whole. |
 | Payroll Register and payslips by branch | Payroll Batch Register → Co. / Branch: the employees of the branch plus the multi-location employees who worked there, each with only the pay earned in that branch, its share of the employer contributions and the deductions when it is the deduction source (*Branch part*). The branch totals of all branches add up to the *All* register. **Branch payslip** opens the payslip on that branch's tab. Print Payslips with a company / branch prints the branch payslip of those employees; with All, one consolidated payslip each (or split). Print and CSV export follow the same filter. |
 
+### Additions in version 25 (design only)
+
+No database change and no change to any computation. Replace `assets/css/app.css`, `app/layout.php` and `pages/login.php`, and add the new folder `assets/fonts` (the Inter typeface, SIL Open Font License, so every computer shows the same letters without an internet font service). The stylesheet is loaded as `app.css?v=30`, so browsers pick up the new look on the next page load.
+
+| Sign of a generated-looking site | What changed |
+|---|---|
+| Too many font styles | One typeface (Inter) served with the system, four weights, one size scale. |
+| No recognizable visual identity | The work area is a light framed panel beside a navy sidebar panel, on a soft tinted page. Navy is the brand colour: sidebar, primary buttons, tabs, the selected row in lists and the current page (a solid white row in the sidebar). Blue is kept for links, focus and charts. |
+| Random coloured or italic words | Colour is used only for status (dot + text) and for figures that need attention. |
+| No custom graphics | The sign-in page shows a drawing of the product's own daily time record and payslip instead of a generic gradient and grid. |
+| Unnecessary eyebrows | No more small spaced-out capitals: filter labels, table headings, stat labels, menu groups, toolbar labels and section titles are sentence case. Printed documents keep their capitals. |
+| Text-only design | Dashboard figures sit in one hairline strip; the payroll cycle is a numbered strip (01 Attendance entry … 09 Period parameters) in the order the work is done. |
+| Layout / component inconsistencies | One radius scale (10 controls, 12 inner boxes, 16 panels), one hairline border, one soft shadow, flat buttons (no gradients), no coloured left bars on cards, alerts or callouts. |
+
 ### Additions in version 24
 
 Database version 20: open the site once (it upgrades by itself) or import `database/upgrade_to_v20_mysql55.sql` (MySQL 5.5; after the version 19 script if it was not imported yet).
