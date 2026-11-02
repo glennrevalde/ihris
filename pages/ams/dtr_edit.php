@@ -58,6 +58,9 @@ $d = row('SELECT * FROM dtr WHERE id = ?', [$id]);
 $sched = employee_schedule($emp, $d['work_date']);
 $ws = $sched['sched_in'] ? date('Y-m-d H:i:s', strtotime($sched['sched_in']) - 4 * 3600) : $d['work_date'] . ' 00:00:00';
 $we = $sched['sched_out'] ? date('Y-m-d H:i:s', strtotime($sched['sched_out']) + 8 * 3600) : add_days($d['work_date'], 1) . ' 04:00:00';
+if (!empty($sched['day_window'])) {
+    [$ws, $we] = $sched['day_window'];   // v25 flexible shift: the 24-hour window of the day
+}
 $logs = rows('SELECT l.*, b.code AS branch_code FROM attendance_logs l LEFT JOIN branches b ON b.id = l.branch_id WHERE l.employee_id = ? AND l.log_time BETWEEN ? AND ? ORDER BY l.log_time', [$d['employee_id'], $ws, $we]);
 $ots = rows('SELECT * FROM overtime_requests WHERE employee_id = ? AND ot_date = ?', [$d['employee_id'], $d['work_date']]);
 $invalid = punch_invalid_ids($logs);
@@ -68,7 +71,7 @@ if ($locked): ?><div class="alert alert-warning">This date belongs to an approve
 <div class="grid grid-2">
   <div class="card"><h3>Computed record</h3>
     <dl class="kv">
-      <dt>Schedule</dt><dd><?= $sched['shift'] ? h($sched['shift']['name']) . ' — ' . h(fmt_time($d['sched_in'])) . ' to ' . h(fmt_time($d['sched_out'])) : 'No schedule' ?><?= $sched['is_rest'] ? ' (rest day)' : '' ?></dd>
+      <dt>Schedule</dt><dd><?= $sched['shift'] ? h($sched['shift']['name']) . ' — ' . (!empty($sched['flex_type']) ? h(shift_coverage($sched['shift'])) : h(fmt_time($d['sched_in'])) . ' to ' . h(fmt_time($d['sched_out']))) : 'No schedule' ?><?= $sched['is_rest'] ? ' (rest day)' : '' ?></dd>
       <dt>Day type</dt><dd><?= h(label($d['day_type'])) ?></dd>
       <dt>Status</dt><dd><?= badge($d['status']) ?><?= $d['manual_override'] ? ' <span class="badge badge-purple">Manually corrected</span>' : '' ?></dd>
       <dt>Worked / regular</dt><dd><?= fmt_minutes($d['worked_minutes']) ?> / <?= fmt_minutes($d['regular_minutes']) ?> (break <?= (int)$d['break_minutes'] ?>m)</dd>

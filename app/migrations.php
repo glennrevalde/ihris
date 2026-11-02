@@ -15,7 +15,7 @@
  */
 require_once __DIR__ . '/engine/paytrans.php';
 
-const DB_VERSION = 20;
+const DB_VERSION = 21;
 
 function db_version(): int
 {
@@ -1256,10 +1256,28 @@ function migration_v20(): array
     ]];
 }
 
+/**
+ * v25 (database version 21): flexible shifts. A shift is either fixed (time in / time out of the schedule) or
+ * flexible: no set time, the required duty hours are the basis, a shortfall is undertime and no late is computed.
+ *   flex_type 1 = 4 logs (Time in, Break out, Break in, Time out; the break taken is deducted)
+ *   flex_type 2 = 2 logs with the break minutes allocated (deducted from a day longer than 5 hours)
+ *   flex_type 3 = 2 logs without a break
+ * A flexible shift has no fixed time in / time out, so both columns accept NULL.
+ */
+function migration_v21(): array
+{
+    return ['tables' => [], 'columns' => [
+        ['shifts', 'flex_type', "TINYINT NOT NULL DEFAULT 0 COMMENT 'Shift type: 0 fixed, 1 flexible 4 logs, 2 flexible 2 logs with break minutes, 3 flexible 2 logs no break'"],
+    ], 'modify' => [], 'settings' => [], 'seeds' => [], 'data' => [
+        "ALTER TABLE shifts MODIFY COLUMN time_in TIME NULL COMMENT 'NULL on a flexible shift'",
+        "ALTER TABLE shifts MODIFY COLUMN time_out TIME NULL COMMENT 'NULL on a flexible shift'",
+    ]];
+}
+
 /** Every upgrade step in order: version => definitions. */
 function migrations_all(): array
 {
-    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20'];
+    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21'];
 }
 
 function mig_table_exists(string $t): bool
@@ -1429,7 +1447,8 @@ function db_upgrade_sql(int $version = DB_VERSION): string
         '17' => 'order of the import configurations',
         '18' => 'Employee Loan / Deduction Request and its approval',
         '19' => 'Attendance record report import (JJM Logs) and the minimum minutes between logs',
-        '20' => 'NBJ Logs import configuration and the other biometric IDs of an employee'][(string)$version] ?? '';
+        '20' => 'NBJ Logs import configuration and the other biometric IDs of an employee',
+        '21' => 'flexible shifts: 4 logs, 2 logs with break minutes, 2 logs without a break'][(string)$version] ?? '';
     $q = fn($v) => $v === null ? 'NULL' : "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], (string)$v) . "'";
     $out = [];
     $out[] = "-- =====================================================================";

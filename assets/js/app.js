@@ -2172,3 +2172,34 @@
   Array.prototype.forEach.call(radios, function (r) { r.addEventListener('change', sync); });
   sync();
 })();
+
+/* v25 Shift Table: a flexible shift has no set times. Choosing a flexible Shift type hides the fields of a fixed
+   schedule (they are cleared when the shift is saved) and explains the optional usual time in. */
+(function () {
+  var sel = document.querySelector('select[data-shift-type]');
+  if (!sel) return;
+  var form = sel.form || document;
+  var fieldOf = function (el) { return el.closest('.field') || el; };
+  var timeIn = form.querySelector('[data-flex-help]');
+  var note = null;
+  var lab = timeIn ? fieldOf(timeIn).querySelector('label') : null;
+  var labText = lab ? lab.textContent : '';
+  if (timeIn) {
+    note = document.createElement('small');
+    note.className = 'help';
+    note.textContent = timeIn.getAttribute('data-flex-help');
+    fieldOf(timeIn).appendChild(note);
+  }
+  function sync() {
+    var t = parseInt(sel.value || '0', 10) || 0;
+    Array.prototype.forEach.call(form.querySelectorAll('[data-fixed-only]'), function (el) { fieldOf(el).hidden = t > 0; });
+    Array.prototype.forEach.call(form.querySelectorAll('[data-flex3-off]'), function (el) { fieldOf(el).hidden = t === 3; });
+    if (note) note.hidden = t === 0;
+    if (lab) lab.textContent = t > 0 ? timeIn.getAttribute('data-flex-label') : labText;
+    if (timeIn) timeIn.required = t === 0;
+    var req = form.querySelector('[name=required_hours]');
+    if (req) req.required = t > 0;
+  }
+  sel.addEventListener('change', sync);
+  sync();
+})();

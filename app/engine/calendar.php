@@ -67,7 +67,7 @@ function calendar_items(array $emp, string $from, string $to): array
         if ($s['is_rest']) {
             $days[$d][] = ['kind' => 'rest', 'title' => 'Rest day', 'time' => '', 'note' => ''];
         } elseif ($s['shift']) {
-            $days[$d][] = ['kind' => 'shift', 'title' => $s['shift']['code'] . ' ' . $s['shift']['name'], 'time' => $hm($s['sched_in']) . ' – ' . $hm($s['sched_out']), 'note' => ''];
+            $days[$d][] = ['kind' => 'shift', 'title' => $s['shift']['code'] . ' ' . $s['shift']['name'], 'time' => !empty($s['flex_type']) ? shift_coverage($s['shift']) : $hm($s['sched_in']) . ' – ' . $hm($s['sched_out']), 'note' => ''];   // v25: a flexible shift has no set time
             if (!empty($s['ot'])) {
                 $days[$d][] = ['kind' => 'preot', 'title' => 'Scheduled overtime', 'time' => date('g:i A', $s['ot'][0]) . ' – ' . date('g:i A', $s['ot'][1]), 'note' => 'Pre-arranged overtime of the shift'];
             }

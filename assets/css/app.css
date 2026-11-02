@@ -371,7 +371,7 @@ fieldset.box.tone-reg > legend { color: var(--primary-700); }
 .pt-rule strong { color: var(--primary-700); }
 .et-preview { padding: 11px 14px; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-2); font-size: 13px; color: var(--text-2); line-height: 1.6; }
 .et-preview strong { color: var(--text); }
-.et-preview[hidden] { display: none; }
+.et-preview[hidden], .field[hidden] { display: none; }
 
 /* ================================================================ buttons
    One shape for every button: 10px corners, flat fills, a 1px border. Primary is navy. */

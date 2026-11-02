@@ -400,7 +400,7 @@ function import_attendance_sheet(array $rows, string $fileName, string $type): a
             }
             $sched = employee_schedule($emp, $date);
             if ($inDt && $outDt && $outDt <= $inDt) {
-                if ($sched['sched_out'] && substr($sched['sched_out'], 0, 10) > $date) {
+                if (($sched['sched_out'] && substr($sched['sched_out'], 0, 10) > $date) || !empty($sched['flex_type'])) {   // v25: a flexible shift may run past midnight
                     $outDt = add_days($date, 1) . ' ' . $tout; // overnight shift
                 } else {
                     $issues[] = 'Time-out is earlier than time-in';

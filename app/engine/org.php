@@ -111,7 +111,7 @@ function pay_group_options(): array
 function shift_options(): array
 {
     $out = [];
-    foreach (rows('SELECT * FROM shifts WHERE is_active = 1 ORDER BY time_in, code') as $s) {
+    foreach (rows('SELECT * FROM shifts WHERE is_active = 1 ORDER BY flex_type > 0, time_in, code') as $s) {
         $out[$s['id']] = shift_option_label($s);
     }
     return $out;
