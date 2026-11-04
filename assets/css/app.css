@@ -640,6 +640,9 @@ body.print-body { background: var(--page) var(--page-art) fixed; }
 .print-toolbar .btn-primary { background: #fff; border-color: #fff; color: var(--ink); }
 .print-toolbar .btn-primary:hover { background: #e9edf8; border-color: #e9edf8; color: var(--ink); }
 .print-toolbar .btn:not(.btn-primary) { background: transparent; border-color: rgba(255,255,255,.22); color: #fff; box-shadow: none; }
+.print-toolbar .btn-pdf { border-color: rgba(255,255,255,.55); }
+.print-toolbar .btn-pdf:hover, .print-toolbar .btn:not(.btn-primary):hover { background: rgba(255,255,255,.1); color: #fff; }
+.print-toolbar .btn[disabled] { opacity: .75; }
 .print-toolbar { position: sticky; top: 0; display: flex; gap: 8px; justify-content: center; align-items: center; padding: 10px; background: #0c1533; z-index: 5; flex-wrap: wrap; }
 .print-toolbar .muted { color: #9aa7cf; font-size: 12.5px; }
 .print-page { background: #fff; width: 210mm; min-height: 297mm; margin: 18px auto; padding: 14mm 14mm; box-shadow: 0 4px 24px rgba(0,0,0,.12); font-size: 12.5px; color: #111; max-width: 100%; }

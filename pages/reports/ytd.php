@@ -37,7 +37,7 @@ if (get('alphalist')) {
             $d['gross'], $d['other_nt'], $d['deminimis'], round($d['sss'] + $d['phic'] + $d['hdmf'], 2), $d['mwe'], $d['taxable'], $d['prev_taxable'], $d['tax_due'], $d['tax'], $d['prev_tax'], round($d['tax'] + $d['prev_tax'] - $d['tax_due'], 2)], $data, array_keys($data)));
 }
 page_header('Year-to-Date & BIR 2316', ['subtitle' => 'Cumulative figures from finalized payroll runs. Tax due is the annualized tax on total taxable compensation (TRAIN annual table).',
-    'actions' => '<a class="btn" href="' . url('rpt_ytd', ['year' => $year, 'employer' => $employer, 'alphalist' => 1]) . '">Export alphalist (CSV)</a> <button class="btn" onclick="window.print()">Print</button>']);
+    'actions' => '<a class="btn" href="' . url('rpt_ytd', ['year' => $year, 'employer' => $employer, 'alphalist' => 1]) . '">Export alphalist (CSV)</a> <button type="button" class="btn" data-print>Print</button> <button type="button" class="btn" data-save-pdf data-pdf-root=".content" data-pdf-size="landscape">Save as PDF</button>']);
 ?>
 <form class="card filters" method="get"><input type="hidden" name="p" value="rpt_ytd">
   <label>Year<input type="number" name="year" value="<?= $year ?>" style="width:100px"></label>

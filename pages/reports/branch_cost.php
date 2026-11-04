@@ -31,7 +31,7 @@ foreach ($rows as $r) {
 }
 $multi = array_filter($multi, fn($b) => count($b) > 1);
 page_header('Branch Cost Allocation', ['subtitle' => 'Payroll cost per branch / cost center for ' . h(month_name($m) . ' ' . $y) . '. ' . count($multi) . ' employee(s) worked in more than one branch.',
-    'actions' => '<button class="btn" onclick="window.print()">Print</button>']);
+    'actions' => '<button type="button" class="btn" data-print>Print</button> <button type="button" class="btn" data-save-pdf data-pdf-root=".content" data-pdf-size="landscape">Save as PDF</button>']);
 ?>
 <form class="card filters" method="get"><input type="hidden" name="p" value="rpt_branch"><label>Month<input type="month" name="month" value="<?= h($month) ?>" data-autosubmit></label></form>
 <?php if (!$by): ?><div class="card"><p class="muted">No finalized payroll for this month.</p></div><?php endif; ?>

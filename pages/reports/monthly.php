@@ -47,7 +47,7 @@ if (get('csv')) {
             round($d['gross'] / max(1, count($d['emp'])), 2), $k ? $budgetFor($k) : 0, $k && $budgetFor($k) ? round($budgetFor($k) - $d['gross'] - $d['er'], 2) : ''], array_keys($dept), $dept));
 }
 page_header('Monthly Payroll Summary', ['subtitle' => 'Finalized payroll runs whose period ends in the selected month.',
-    'actions' => '<a class="btn" href="' . url('rpt_monthly', ['month' => $month, 'csv' => 1]) . '">Export CSV</a> <button class="btn" onclick="window.print()">Print</button> <a class="btn" href="' . url('budgets', ['year' => $y]) . '">Budgets</a>']);
+    'actions' => '<a class="btn" href="' . url('rpt_monthly', ['month' => $month, 'csv' => 1]) . '">Export CSV</a> <button type="button" class="btn" data-print>Print</button> <button type="button" class="btn" data-save-pdf data-pdf-root=".content" data-pdf-size="landscape">Save as PDF</button> <a class="btn" href="' . url('budgets', ['year' => $y]) . '">Budgets</a>']);
 ?>
 <form class="card filters" method="get"><input type="hidden" name="p" value="rpt_monthly"><label>Month<input type="month" name="month" value="<?= h($month) ?>" data-autosubmit></label></form>
 <div class="stats">

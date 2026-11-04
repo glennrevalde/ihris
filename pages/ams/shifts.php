@@ -18,8 +18,8 @@ crud_page([
     'fields' => [
         'code' => ['label' => 'Code', 'required' => true],
         'name' => ['label' => 'Description', 'required' => true],
-        'flex_type' => ['label' => 'Shift type', 'type' => 'select', 'options' => SHIFT_FLEX_TYPES, 'placeholder' => null, 'wide' => true, 'attrs' => 'data-shift-type',
-            'help' => 'Flexible: no specific time required. The total required duty hours are the basis of the computation; a day below them is undertime and no late is computed.'],
+        'flex_type' => ['label' => 'Shift type', 'type' => 'select', 'options' => SHIFT_FLEX_TYPES, 'placeholder' => null, 'wide' => true, 'attrs' => 'data-shift-type data-nobreak="3,5,7"',
+            'help' => 'Flexible: no specific time required and no late is ever computed. Types 1-3: a day below the Total required duty hours is undertime. Types 4-6: only the hours rendered are the hours work (no undertime). Types 7-8: a complete working day counts the Total required duty hours (no undertime).'],
         'time_in' => ['label' => 'Time in', 'type' => 'time', 'attrs' => 'data-flex-label="Usual time in (optional)" data-flex-help="Optional on a flexible shift: the usual time in, used only to keep the logs of a night worker on the day they started (no late is computed)."'],
         'break_out1' => ['label' => 'Break out 1', 'type' => 'time', 'attrs' => 'data-fixed-only'],
         'break_in1' => ['label' => 'Break in 1', 'type' => 'time', 'attrs' => 'data-fixed-only'],
@@ -32,7 +32,7 @@ crud_page([
             'help' => 'Decides which log columns are filled for employees on this shift in Attendance Entry and the import review. A flexible shift has 4 or 2 logs by its type.', 'attrs' => 'data-fixed-only'],
         'required_hours' => ['label' => 'Total required duty hours', 'type' => 'number', 'step' => '0.01', 'help' => 'Blank = computed from the shift. Required on a flexible shift (e.g. 8).'],
         'np_hours' => ['label' => 'Total night-premium hours', 'type' => 'number', 'step' => '0.01', 'help' => 'Blank = computed from the night window', 'attrs' => 'data-fixed-only'],
-        'break_minutes' => ['label' => 'Break allowance (minutes)', 'type' => 'number', 'default' => 60, 'help' => 'Fixed shift: used when no break times are set. Flexible, 2 logs with break: the minutes allocated. Flexible, 4 logs: used when the break logs are missing.',
+        'break_minutes' => ['label' => 'Break allowance (minutes)', 'type' => 'number', 'default' => 60, 'help' => 'Fixed shift: used when no break times are set. Flexible, 2 logs with break minutes (types 2 and 4): the minutes allocated. Flexible, 4 logs (types 1, 6 and 8): used when the break logs are missing.',
             'attrs' => 'data-flex3-off'],
         'flex_minutes' => ['label' => 'Flexi time +/- (minutes)', 'type' => 'number', 'default' => 0, 'help' => 'Time-in within this window is not late; the day shifts accordingly.', 'attrs' => 'data-fixed-only'],
         'grace_minutes' => ['label' => 'Grace period override (minutes)', 'type' => 'number', 'help' => 'Blank = global setting', 'attrs' => 'data-fixed-only'],
@@ -58,7 +58,7 @@ crud_page([
     'list' => ['code', 'name', 'flex_type', 'time_in', 'break_out1', 'break_in1', 'break_out2', 'break_in2', 'time_out', 'ot_in', 'logs_per_day', 'required_hours', 'np_hours', 'flex_minutes', 'strict_time', 'whole_week', 'rest_days', 'is_active'],
     'validate' => function ($d) {
         $e = [];
-        $fx = (int)($d['flex_type'] ?? 0);
+        $fx = shift_flex_type(['flex_type' => $d['flex_type'] ?? 0]);
         if ($fx) {
             // flexible shift: the required duty hours are the basis; the times of a fixed schedule do not apply
             if ((float)($d['required_hours'] ?? 0) <= 0) {
@@ -66,7 +66,7 @@ crud_page([
             } elseif ((float)$d['required_hours'] > 24) {
                 $e[] = 'The Total required duty hours cannot be more than 24.';
             }
-            if ($fx === 2 && (int)($d['break_minutes'] ?? 0) <= 0) {
+            if (flex_break_kind($fx) === 'allocated' && (int)($d['break_minutes'] ?? 0) <= 0) {
                 $e[] = 'Enter the break minutes allocated (Break allowance, e.g. 60) of a flexible 2-log shift with break.';
             }
             return $e;
@@ -111,8 +111,8 @@ crud_page([
         if ($fx) {
             // a flexible shift keeps only its type, required hours, break minutes, usual time in and rest days
             update('shifts', ['time_out' => null, 'break_out1' => null, 'break_in1' => null, 'break_out2' => null, 'break_in2' => null, 'ot_in' => null, 'ot_out' => null,
-                'logs_per_day' => $fx === 1 ? 4 : 2, 'np_hours' => null, 'flex_minutes' => 0, 'grace_minutes' => null, 'strict_time' => 0,
-                'break_minutes' => $fx === 3 ? 0 : (int)$s['break_minutes']], 'id = ?', [$id]);
+                'logs_per_day' => flex_logs($fx), 'np_hours' => null, 'flex_minutes' => 0, 'grace_minutes' => null, 'strict_time' => 0,
+                'break_minutes' => flex_break_kind($fx) === 'none' ? 0 : (int)$s['break_minutes']], 'id = ?', [$id]);
             return;
         }
         $calc = shift_computed_hours($s);

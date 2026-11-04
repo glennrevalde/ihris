@@ -76,26 +76,60 @@ function att_employee(int $id): ?array
 
 /* --------------------------------------------------------------------- flexible shifts (v25) */
 
-/** Kinds of shift: 0 = fixed schedule; 1-3 = flexible (no set time, the required duty hours are the basis). */
+/**
+ * Kinds of shift: 0 = fixed schedule; 1-8 = flexible (no set time in or time out, no late ever computed).
+ * Each flexible kind has a number of logs, a break rule and a way of counting the hours:
+ *   undertime (1-3, v25)  the required duty hours are the basis; a day below them is undertime;
+ *   rendered  (4-6, v26)  only the hours rendered are the hours work; no undertime;
+ *   credited  (7-8, v26)  a complete working day counts the Total required duty hours; no late, no undertime.
+ */
 const SHIFT_FLEX_TYPES = [
     0 => 'Fixed: time in and time out set by the shift',
-    1 => 'Flexible, 4 logs: Time in, Break out, Break in, Time out',
-    2 => 'Flexible, 2 logs: Time in, Time out, break minutes allocated',
-    3 => 'Flexible, 2 logs: Time in, Time out, no break',
+    1 => '1. Flexible, 4 logs (Time in, Break out, Break in, Time out): below the required hours is undertime',
+    2 => '2. Flexible, 2 logs, break minutes allocated: below the required hours is undertime',
+    3 => '3. Flexible, 2 logs, no break: below the required hours is undertime',
+    4 => '4. Flexible, 2 logs, break minutes allocated: only the rendered hours are hours work',
+    5 => '5. Flexible, 2 logs, no break: only the rendered hours are hours work',
+    6 => '6. Flexible, 4 logs (Time in, Break out, Break in, Time out): only the rendered hours are hours work',
+    7 => '7. Flexible, 2 logs, no break: the required hours are credited (no late, no undertime)',
+    8 => '8. Flexible, 4 logs (Time in, Break out, Break in, Time out): the required hours are credited (no late, no undertime)',
 ];
 
 /** Short name of the kind of shift, for lists. */
-const SHIFT_FLEX_SHORT = [1 => 'Flexible, 4 logs', 2 => 'Flexible, 2 logs + break', 3 => 'Flexible, 2 logs, no break'];
+const SHIFT_FLEX_SHORT = [1 => 'Flexible, 4 logs', 2 => 'Flexible, 2 logs + break', 3 => 'Flexible, 2 logs, no break',
+    4 => 'Flexible, 2 logs + break, rendered hours', 5 => 'Flexible, 2 logs, no break, rendered hours', 6 => 'Flexible, 4 logs, rendered hours',
+    7 => 'Flexible, 2 logs, no break, required hours credited', 8 => 'Flexible, 4 logs, required hours credited'];
 
-/** 0 for a fixed shift, 1 / 2 / 3 for the three flexible kinds. */
+/** 0 for a fixed shift, 1 to 8 for the flexible kinds. */
 function shift_flex_type(?array $shift): int
 {
     $t = (int)($shift['flex_type'] ?? 0);
-    return in_array($t, [1, 2, 3], true) ? $t : 0;
+    return ($t >= 1 && $t <= 8) ? $t : 0;
+}
+
+/** Logs a day of a flexible kind: 4 (Time in, Break out, Break in, Time out) or 2 (Time in, Time out). */
+function flex_logs(int $type): int
+{
+    return in_array($type, [1, 6, 8], true) ? 4 : 2;
+}
+
+/** Break of a flexible kind: 'logged' (4 logs), 'allocated' (the break minutes of the shift) or 'none'. */
+function flex_break_kind(int $type): string
+{
+    if (in_array($type, [1, 6, 8], true)) {
+        return 'logged';
+    }
+    return in_array($type, [2, 4], true) ? 'allocated' : 'none';
+}
+
+/** How a flexible kind counts the hours: 'undertime' (1-3), 'rendered' (4-6) or 'credit' (7-8). */
+function flex_mode(int $type): string
+{
+    return $type >= 7 ? 'credit' : ($type >= 4 ? 'rendered' : 'undertime');
 }
 
 /**
- * Minutes of break deducted from a flexible day of $span minutes:
+ * Minutes of break deducted from a flexible day of $span minutes (by the break of the kind, flex_break_kind()):
  *  - 4 logs: the break the employee logged (Break out to Break in); when the break logs are missing, the break
  *    allowance of the shift, as on a day longer than 5 hours;
  *  - 2 logs with break minutes: the allocated minutes, on a day longer than 5 hours (a half day has no break);
@@ -104,10 +138,11 @@ function shift_flex_type(?array $shift): int
  */
 function flex_break_windows(int $type, array $shift, int $in, int $out, array $logged): array
 {
-    if ($type === 3) {
+    $kind = flex_break_kind($type);
+    if ($kind === 'none') {
         return [];
     }
-    if ($type === 1 && $logged) {
+    if ($kind === 'logged' && $logged) {
         return $logged;
     }
     $bm = (int)($shift['break_minutes'] ?? 0);
@@ -129,7 +164,7 @@ function shift_logs_per_day(?array $shift): int
     // a flexible shift always has its own number of logs: 4, or 2 (the six-log policy is for fixed shifts)
     $fx = shift_flex_type($shift);
     if ($fx) {
-        return $fx === 1 ? 4 : 2;
+        return flex_logs($fx);
     }
     if (att_cfg()['six_logs']) {
         return 6;
@@ -182,7 +217,10 @@ function shift_coverage(array $shift): string
     $fx = shift_flex_type($shift);
     if ($fx) {
         $hrs = rtrim(rtrim(number_format((float)($shift['required_hours'] ?? 0), 2), '0'), '.');
-        return 'Flexible, ' . $hrs . ' hrs' . ($fx === 1 ? ' + break as logged' : ($fx === 2 ? ' + ' . (int)$shift['break_minutes'] . '-min. break' : ', no break'));
+        $bk = flex_break_kind($fx);
+        $mode = flex_mode($fx);
+        return 'Flexible, ' . $hrs . ' hrs' . ($bk === 'logged' ? ' + break as logged' : ($bk === 'allocated' ? ' + ' . (int)$shift['break_minutes'] . '-min. break' : ', no break'))
+            . ($mode === 'rendered' ? ', rendered hours' : ($mode === 'credit' ? ', hours credited' : ''));
     }
     $marks = [$shift['time_in']];
     if ($n >= 4 && !empty($shift['break_out1']) && !empty($shift['break_in1'])) {
@@ -230,7 +268,10 @@ function shift_tip_html(array $shift): string
     $days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     $rest = shift_is_7day($shift) ? 'Worked 7 days: the default day-off of the employee'
         : 'Rest day: ' . implode(', ', array_map(fn($d) => $days[(int)$d] ?? $d, array_filter(explode(',', (string)$shift['rest_days']), 'strlen')));
-    $fxNote = shift_flex_type($shift) ? '<br>Flexible: no late; below the hours is undertime' : '';
+    $fxm = shift_flex_type($shift) ? flex_mode(shift_flex_type($shift)) : '';
+    $fxNote = $fxm === 'undertime' ? '<br>Flexible: no late; below the hours is undertime'
+        : ($fxm === 'rendered' ? '<br>Flexible: no late, no undertime; the hours rendered are the hours work'
+            : ($fxm === 'credit' ? '<br>Flexible: a complete working day counts these hours; no late, no undertime' : ''));
     return $h . '<div class="sp-foot">' . h(rtrim(rtrim(number_format((float)$req, 2), '0'), '.')) . ' working hours' . ((int)($shift['flex_minutes'] ?? 0) ? ', ' . (int)$shift['flex_minutes'] . ' min. flexible' : '') . $fxNote . '<br>' . h($rest) . '</div>';
 }
 
@@ -248,7 +289,7 @@ function shift_computed_hours(array $s): array
     if (shift_flex_type($s) || empty($s['time_in']) || empty($s['time_out'])) {
         // flexible shift: no set times, the required duty hours are the shift
         $req = (float)($s['required_hours'] ?? 0);
-        $bm = shift_flex_type($s) === 3 ? 0 : (int)($s['break_minutes'] ?? 0);
+        $bm = shift_flex_type($s) && flex_break_kind(shift_flex_type($s)) === 'none' ? 0 : (int)($s['break_minutes'] ?? 0);
         return ['span_minutes' => (int)round($req * 60) + $bm, 'break_minutes' => $bm, 'required_hours' => round($req, 2), 'np_hours' => 0.0];
     }
     $d = '2026-01-05';
@@ -1070,6 +1111,7 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
     $branch = $sched['branch_id'];
     $req = (int)$sched['required_min'];
     $fx = (int)($sched['flex_type'] ?? 0);   // v25: flexible shift (no late; the required duty hours are the basis)
+    $fxMode = $fx ? flex_mode($fx) : '';      // v26: 'undertime', 'rendered' (no undertime) or 'credit' (the required hours)
 
     $webFlags = [];
     $source = null;
@@ -1160,9 +1202,10 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
         if ($isWorkday && $c['inc_absent']) {
             $d['status'] = 'absent';
             $d['absent_minutes'] = $req;
-        } elseif ($isWorkday && $c['inc_ut'] && $fx) {
+        } elseif ($isWorkday && $c['inc_ut'] && $fx && $fxMode !== 'credit') {
             // flexible shift: what was rendered between the first and the last log counts; the rest of the
-            // required hours is undertime (never late)
+            // required hours is undertime (never late). v26: on a rendered-hours kind (4-6) there is no undertime.
+            // A credited kind (7-8) needs both logs: it stays incomplete until corrected.
             $all = array_values(array_filter([$p['in'], $p['bo1'], $p['bi1'], $p['bo2'], $p['bi2'], $p['out']]));
             sort($all);
             $first = strtotime($all[0]);
@@ -1175,8 +1218,8 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
             $reg = max(0, min($reg, $req));
             $d['status'] = 'present';
             $d['regular_minutes'] = $d['worked_minutes'] = $reg;
-            $d['undertime_minutes'] = max(0, $req - $reg) + $c['inc_penalty'];
-            $d['penalty_minutes'] = $c['inc_penalty'];
+            $d['undertime_minutes'] = $fxMode === 'rendered' ? 0 : max(0, $req - $reg) + $c['inc_penalty'];
+            $d['penalty_minutes'] = $fxMode === 'rendered' ? 0 : $c['inc_penalty'];
         } elseif ($isWorkday && $c['inc_ut'] && $sched['sched_in']) {
             // count what was rendered between the first and the last log; the rest is undertime
             $all = array_values(array_filter([$p['in'], $p['bo1'], $p['bi1'], $p['bo2'], $p['bi2'], $p['out']]));
@@ -1268,12 +1311,19 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
                 $d['break_minutes'] = $breakMin;
                 $net = max(0, (int)floor(($out - $in) / 60) - $breakMin);
                 $reg = min($net, $maxReg);
-                $ut = ($sched['is_rest'] || $noLate) ? 0 : max(0, $req - $net);
+                $ut = ($sched['is_rest'] || $noLate || $fxMode !== 'undertime') ? 0 : max(0, $req - $net);
                 $ot = $net - $reg;
+                if ($fxMode === 'credit' && !$sched['is_rest']) {
+                    // v26 credited kinds (7-8): a complete working day counts the Total required duty hours, whatever
+                    // was rendered (no late, no undertime). Time beyond them is overtime only with an approved overtime
+                    // request. A rest day worked counts the hours rendered, as on any shift.
+                    $reg = $maxReg;
+                    $ot = (int)min($ot, (float)val("SELECT COALESCE(SUM(hours),0) FROM overtime_requests WHERE employee_id = ? AND ot_date = ? AND status = 'approved'", [$empId, $date]) * 60);
+                }
                 if ($ot < $c['ot_min']) {
                     $ot = 0;
                 }
-                if ($fx === 1 && !$actual) {
+                if (flex_break_kind($fx) === 'logged' && !$actual) {
                     $d['log_status'] = $p['bo1'] || $p['bi1'] ? 'No ' . ($p['bo1'] ? 'break in' : 'break out') . ' log' : 'No break logs';
                 }
                 $d['regular_minutes'] = $reg;
@@ -1595,7 +1645,11 @@ function dtr_hour_buckets(array $r, bool $monthlyRated): array
     switch ($r['day_type']) {
         case 'ordinary':
             if ($r['is_workday']) {
-                if (!($status === 'on_leave' && (int)($r['leave_minutes'] ?? 0) > 0)) {
+                $fxT = shift_flex_type($shift);
+                if ($fxT && flex_mode($fxT) === 'rendered' && $status === 'present') {
+                    // v26 flexible kinds 4-6: only the hours rendered are hours work (no undertime is deducted)
+                    $add('hours_work', $reg);
+                } elseif (!($status === 'on_leave' && (int)($r['leave_minutes'] ?? 0) > 0)) {
                     $add('hours_work', $reqMin / 60);
                 }
                 if ($status === 'incomplete') {

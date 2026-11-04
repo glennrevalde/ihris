@@ -2193,7 +2193,8 @@
   function sync() {
     var t = parseInt(sel.value || '0', 10) || 0;
     Array.prototype.forEach.call(form.querySelectorAll('[data-fixed-only]'), function (el) { fieldOf(el).hidden = t > 0; });
-    Array.prototype.forEach.call(form.querySelectorAll('[data-flex3-off]'), function (el) { fieldOf(el).hidden = t === 3; });
+    var noBreak = (sel.getAttribute('data-nobreak') || '3').split(',').map(function (x) { return parseInt(x, 10); });   // v26: types without a break
+    Array.prototype.forEach.call(form.querySelectorAll('[data-flex3-off]'), function (el) { fieldOf(el).hidden = noBreak.indexOf(t) >= 0; });
     if (note) note.hidden = t === 0;
     if (lab) lab.textContent = t > 0 ? timeIn.getAttribute('data-flex-label') : labText;
     if (timeIn) timeIn.required = t === 0;
