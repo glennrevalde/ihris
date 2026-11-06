@@ -20,7 +20,7 @@ if ($route === 'closing_print') {
     $runs = rows('SELECT r.run_no, r.run_type, r.period_start, r.period_end, r.pay_date, COUNT(pi.id) AS n, SUM(pi.gross_pay) AS gross, SUM(pi.net_pay) AS net
                   FROM payroll_items pi JOIN payroll_runs r ON r.id = pi.run_id WHERE pi.closing_id = ? GROUP BY r.id ORDER BY r.pay_date', [(int)$pc['id']]);
     print_header('Period Closing ' . $pc['closing_no']);
-    echo company_letterhead(); ?>
+    echo company_letterhead(!empty($pc['branch_id']) ? row('SELECT * FROM branches WHERE id = ?', [(int)$pc['branch_id']]) : null); ?>
     <h1>Period Closing Report</h1>
     <table class="doc-table"><tbody>
       <tr><th>Closing no.</th><td><?= h($pc['closing_no']) ?></td><th>Pay code</th><td><?= h($pc['pay_group_code'] . ' — ' . $pc['pay_group_name']) ?></td></tr>

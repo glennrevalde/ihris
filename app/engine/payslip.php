@@ -252,9 +252,13 @@ function payslip_html(array $it, array $o = []): string
         $hrs = $showHours && !empty($r['hours']) ? '<span class="h">' . h(rtrim(rtrim(number_format((float)$r['hours'], 2), '0'), '.')) . 'h</span>' : '';
         return '<div class="ps-line"><span class="l">' . $lbl . $hrs . '</span><span class="a">' . ps_amt((float)$r['amount']) . '</span></div>';
     };
+    // v27: the logo of the company of the payslip (the branch tab, else the employer of record), else the default logo
+    $logoRoute = isset($_GET['p']) && $_GET['p'] === 'payslips_print' ? 'payslips_print' : 'payslip';
+    $logoBranch = (int)($branchRow['branch_id'] ?? ($it['default_branch']['id'] ?? ($it['default_branch_id'] ?? 0)));
+    $logoImg = function_exists('report_logo_img') ? report_logo_img('ps-logo', $logoRoute, $logoBranch ? [$logoBranch] : []) : '';
     ob_start(); ?>
 <div class="ps<?= !empty($o['cut']) ? ' cut' : '' ?>">
-  <div class="ps-co<?= function_exists('report_logo_on') && report_logo_on(isset($_GET['p']) && $_GET['p'] === 'payslips_print' ? 'payslips_print' : 'payslip') ? ' has-logo lp-' . report_logo_placement() : '' ?>"><?= function_exists('report_logo_img') ? report_logo_img('ps-logo', isset($_GET['p']) && $_GET['p'] === 'payslips_print' ? 'payslips_print' : 'payslip') : '' ?><?= h($company) ?></div>
+  <div class="ps-co<?= $logoImg !== '' ? ' has-logo lp-' . report_logo_placement() : '' ?>"><?= $logoImg ?><?= h($company) ?></div>
   <div class="ps-sub"><?= h(trim((string)setting('payslip_title', '')) ?: 'PAYSLIP') ?><?= $branchRow ? ' — ' . h($branchRow['branch_name']) : (count($it['branches']) > 1 ? ' — consolidated' : '') ?>, <?= h($it['run_no']) ?></div>
   <?php if ($copy): ?><div class="ps-copy">( COPY )</div><?php endif; ?>
   <div class="ps-head">

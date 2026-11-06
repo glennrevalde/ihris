@@ -1,6 +1,40 @@
 <?php
 $rows = rows('SELECT * FROM settings WHERE label IS NOT NULL ORDER BY grp, sort_order');
 if (is_post()) {
+    if (in_array(post('_action'), ['branch_logo', 'branch_logo_remove'], true)) {
+        // v27: the own logo of a company / branch (the default logo prints for the others)
+        $bid = (int)post('branch_id');
+        $br = $bid ? row('SELECT id, name, COALESCE(NULLIF(branch_code, \'\'), code) AS code FROM branches WHERE id = ?', [$bid]) : null;
+        try {
+            if (!$br) {
+                throw new RuntimeException('Choose a company / branch.');
+            }
+            if (post('_action') === 'branch_logo_remove') {
+                $old = branch_logo_file($bid);
+                if ($old) {
+                    @unlink($old);
+                }
+                set_setting('report_logo_b' . $bid, '');
+                audit('admin', 'branch_logo_remove', 'branches', $bid);
+                flash('success', $br['code'] . ' ' . $br['name'] . ': own logo removed. Its reports print the default logo.');
+            } else {
+                $path = report_logo_store('branch_logo', $bid);
+                if (!$path) {
+                    throw new RuntimeException('Choose the logo file of ' . $br['name'] . '.');
+                }
+                set_setting('report_logo_b' . $bid, $path);
+                audit('admin', 'branch_logo_update', 'branches', $bid);
+                flash('success', $br['code'] . ' ' . $br['name'] . ': logo saved. Its reports print this logo.');
+                if (setting('report_logo_enabled', '0') !== '1') {
+                    flash('warning', 'Tick Add Company Logo to Reports (and the reports) so that the logos are printed.');
+                }
+            }
+        } catch (RuntimeException $e) {
+            flash('error', $e->getMessage());
+        }
+        header('Location: ' . url('settings') . '#branch-logos');
+        exit;
+    }
     if (post('_action') === 'report_logo' || post('_action') === 'report_logo_remove') {
         // Company logo on reports (app/engine/branding.php)
         try {
@@ -10,9 +44,11 @@ if (is_post()) {
                     @unlink($old);
                 }
                 set_setting('report_logo_path', '');
-                set_setting('report_logo_enabled', '0');
+                if (!branch_logo_files(true)) {
+                    set_setting('report_logo_enabled', '0');
+                }
                 audit('admin', 'report_logo_remove', 'settings', 'report_logo_path');
-                flash('success', 'Company logo removed: the reports print the text letterhead again.');
+                flash('success', branch_logo_files() ? 'Default logo removed: the companies with their own logo keep it; the others print the text letterhead (or the only logo saved).' : 'Company logo removed: the reports print the text letterhead again.');
             } else {
                 $path = report_logo_store('report_logo');
                 if ($path) {
@@ -25,8 +61,8 @@ if (is_post()) {
                 set_setting('report_logo_placement', isset(LOGO_PLACEMENTS[$place]) ? $place : 'logo_center');
                 set_setting('report_logo_reports', $all);
                 audit('admin', 'report_logo_update', 'settings', 'report_logo', ['enabled' => post('report_logo_enabled') ? 1 : 0, 'reports' => $all === 'all' ? 'all' : count($sel), 'new_logo' => $path ? 1 : 0, 'placement' => report_logo_placement()]);
-                if (post('report_logo_enabled') && !report_logo_file()) {
-                    flash('warning', 'Upload the company logo: no logo is printed until one is uploaded.');
+                if (post('report_logo_enabled') && !report_logo_any()) {
+                    flash('warning', 'Upload the default logo (or the logo of a company / branch): no logo is printed until one is uploaded.');
                 } elseif (post('report_logo_enabled') && $all === '') {
                     flash('warning', 'No report is ticked: tick the reports that print the logo, or All reports.');
                 }
@@ -108,7 +144,7 @@ page_header('System Settings', ['subtitle' => 'Policy parameters used across the
 <div class="card"><button class="btn btn-primary btn-lg">Save settings</button></div>
 </form>
 <?php
-$logoUri = report_logo_uri();
+$logoUri = report_logo_file_uri(report_logo_file());   // the default logo itself
 $logoOn = setting('report_logo_enabled', '0') === '1';
 $logoSel = (string)setting('report_logo_reports', '');
 $logoAll = $logoSel === 'all';
@@ -119,14 +155,14 @@ foreach (report_logo_reports() as $r => [$l, $g]) {
 }
 ?>
 <form method="post" enctype="multipart/form-data" class="card logo-card" id="report-logo"><?= csrf_field() ?><input type="hidden" name="_action" value="report_logo">
-  <div class="card-head"><div><h2>Company logo on reports</h2><div class="sub">Optional. Upload the logo once, then choose the reports that print it in their letterhead.</div></div></div>
+  <div class="card-head"><div><h2>Company logo on reports</h2><div class="sub">Optional. The default logo prints for all companies and branches; a company or branch with its own logo (below) prints its own. Choose the reports that print the logo in their letterhead.</div></div></div>
   <div class="logo-setup">
     <div class="logo-preview<?= $logoUri ? '' : ' is-empty' ?>">
-      <?php if ($logoUri): ?><img src="<?= h($logoUri) ?>" alt="Company logo"><?php else: ?><span>No logo uploaded</span><?php endif; ?>
+      <?php if ($logoUri): ?><img src="<?= h($logoUri) ?>" alt="Default logo"><?php else: ?><span>No default logo</span><?php endif; ?>
     </div>
     <div class="logo-fields">
       <label class="check logo-switch"><input type="checkbox" name="report_logo_enabled" value="1"<?= checked($logoOn) ?>> <strong>Add Company Logo to Reports</strong></label>
-      <div class="field"><label>Company logo <?= $logoUri ? '(upload to replace)' : '' ?></label><input type="file" name="report_logo" accept="image/png,image/jpeg,image/gif,image/webp">
+      <div class="field"><label>Default logo, all companies / branches <?= $logoUri ? '(upload to replace)' : '' ?></label><input type="file" name="report_logo" accept="image/png,image/jpeg,image/gif,image/webp">
         <small class="help">PNG with a transparent background looks best. Resized to at most 600 x 240 pixels.</small></div>
     </div>
   </div>
@@ -150,8 +186,36 @@ foreach (report_logo_reports() as $r => [$l, $g]) {
     </div>
   </div>
   <div class="form-actions"><button class="btn btn-primary">Save logo settings</button>
-    <?php if ($logoUri): ?><button class="btn btn-danger-outline" name="_action" value="report_logo_remove" formnovalidate data-confirm="Remove the company logo from every report?">Remove logo</button><?php endif; ?></div>
+    <?php if ($logoUri): ?><button class="btn btn-danger-outline" name="_action" value="report_logo_remove" formnovalidate data-confirm="Remove the default logo? The companies with their own logo keep it.">Remove default logo</button><?php endif; ?></div>
 </form>
+<?php
+// v27: the own logo of each company / branch
+$brLogos = branch_logo_files();
+$brList = rows("SELECT id, name, company_name, COALESCE(NULLIF(branch_code, ''), code) AS code, is_active FROM branches ORDER BY is_active DESC, company_code, branch_code, code");
+$onlyOne = !report_logo_file() && count($brLogos) === 1 ? (int)array_key_first($brLogos) : 0;
+?>
+<div class="card flush" id="branch-logos">
+  <div class="card-head"><div><h2>Logos of companies and branches</h2>
+    <div class="sub">Upload a logo for a company or branch that has its own. Its reports (a payslip, DTR or ledger of its employee, a report filtered to it) print that logo; the others print the default logo. When only one logo is saved, it prints for every company. A report of several companies prints the default logo, or, without one, their logos side by side.</div></div></div>
+  <div class="blogo-list">
+  <?php foreach ($brList as $b):
+      $bid = (int)$b['id'];
+      $own = isset($brLogos[$bid]);
+      $uri = $own ? report_logo_file_uri($brLogos[$bid]) : '';
+      $note = $own ? 'Own logo' : ($logoUri ? 'Prints the default logo' : ($onlyOne && $onlyOne !== $bid ? 'Prints the only logo saved' : 'No logo: text letterhead')); ?>
+    <div class="blogo-row<?= $b['is_active'] ? '' : ' is-off' ?>">
+      <div class="blogo-thumb<?= $own ? '' : ' is-empty' ?>"><?= $own ? '<img src="' . h($uri) . '" alt="">' : '<span>' . ($logoUri ? 'Default' : '—') . '</span>' ?></div>
+      <div class="blogo-name"><strong><?= h($b['code']) ?> <?= h($b['name']) ?></strong><small><?= h($b['company_name'] ?: '') ?><?= $b['company_name'] ? ', ' : '' ?><?= h($note) ?><?= $b['is_active'] ? '' : ', inactive' ?></small></div>
+      <form method="post" enctype="multipart/form-data" class="blogo-form"><?= csrf_field() ?><input type="hidden" name="branch_id" value="<?= $bid ?>">
+        <input type="file" name="branch_logo" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Logo of <?= h($b['name']) ?>" required>
+        <button class="btn btn-sm btn-primary" name="_action" value="branch_logo"><?= $own ? 'Replace' : 'Upload' ?></button>
+        <?php if ($own): ?><button class="btn btn-sm btn-danger-outline" name="_action" value="branch_logo_remove" formnovalidate data-confirm="Remove the logo of <?= h($b['name']) ?>? Its reports print the default logo.">Remove</button><?php endif; ?>
+      </form>
+    </div>
+  <?php endforeach; ?>
+  <?php if (!$brList): ?><p class="muted" style="padding:16px 20px;margin:0">No company or branch yet (Company Table).</p><?php endif; ?>
+  </div>
+</div>
 <div class="card"><h2>Test email delivery</h2>
   <form method="post" class="filters" style="padding:0"><?= csrf_field() ?><input type="hidden" name="_action" value="test_mail">
     <label>Send to<input type="email" name="test_to" value="<?= h(current_user()['email']) ?>"></label><button class="btn">Send test</button></form>

@@ -169,6 +169,7 @@ function company_menu(): array
             ['Cash Payment Listing', 'rpt_cash_listing'],
             ['Payroll Register (summary)', 'rpt_register'],
             ['Attendance Summary Report', 'rpt_attendance'],
+            ['Attendance Logs per Employee Listing', 'rpt_att_logs'],
             ['Earnings & Deductions', 'rpt_earn_ded'],
             ['Year-to-Date Report', 'rpt_ytd'],
             ['Payroll Journal (GL)', 'rpt_journal'],
@@ -307,7 +308,7 @@ function page_header(string $title, array $opt = []): void
 <meta name="theme-color" content="#0c1533">
 <title><?= h($title) ?> - <?= h($appName) ?></title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c1533'/%3E%3Ctext x='16' y='22' font-family='Segoe UI,Arial' font-size='15' font-weight='700' fill='white' text-anchor='middle'%3E<?= rawurlencode(app_mark()) ?>%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/css/app.css?v=32">
+<link rel="stylesheet" href="assets/css/app.css?v=33">
 </head>
 <body class="<?= $u ? 'has-sidebar' : 'guest' ?>" data-app-name="<?= h($appName) ?>">
 <?php if ($u): ?>
@@ -447,7 +448,7 @@ function print_header(string $title, bool $landscape = false, string $size = '')
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?></title>
-<link rel="stylesheet" href="assets/css/app.css?v=32">
+<link rel="stylesheet" href="assets/css/app.css?v=33">
 <?php if ($landscape): ?><style>@page { size: <?= $size === 'legal' ? 'legal ' : '' ?>landscape; }</style><?php endif; ?>
 </head>
 <body class="print-body">
@@ -467,12 +468,18 @@ function print_footer(): void
     echo "</div>\n<script src=\"assets/js/pdf.js?v=32\"></script>\n<script>(function(){var t=document.querySelectorAll('table.doc-table,table.reg,table.table');for(var i=0;i<t.length;i++){if(t[i].closest('.table-wrap'))continue;var w=document.createElement('div');w.className='table-wrap table-wrap-auto';t[i].parentNode.insertBefore(w,t[i]);w.appendChild(t[i]);}})();</script>\n</body>\n</html>";
 }
 
-function company_letterhead(?array $branch = null): string
+/**
+ * Letterhead of a printed report: the company (branch row) or the company name of System Settings, with the logo.
+ * v27: $logoBranchIds = the companies / branches whose logo is printed (default: the branch given; none = all
+ * companies, i.e. the default logo). See report_logo_files_for().
+ */
+function company_letterhead(?array $branch = null, ?array $logoBranchIds = null): string
 {
     $name = $branch['company_name'] ?? setting('company_name');
     $addr = $branch['address'] ?? setting('company_address');
     // company logo when this report is ticked in System Settings > Company logo on reports (app/engine/branding.php)
-    $logo = function_exists('report_logo_img') ? report_logo_img() : '';
+    $ids = $logoBranchIds ?? (!empty($branch['id']) ? [(int)$branch['id']] : []);
+    $logo = function_exists('report_logo_img') ? report_logo_img('lh-logo', null, $ids) : '';
     $place = $logo ? ' lp-' . report_logo_placement() : '';   // centered, left / right beside the name, or at the left / right edge
     return '<div class="letterhead' . ($logo ? ' has-logo' : '') . $place . '">' . $logo . '<div class="lh-text"><div class="lh-name">' . h($name) . '</div><div class="lh-addr">' . h($addr) . '</div></div></div>';
 }

@@ -32,7 +32,7 @@ if (get('csv')) {
 }
 $tot = array_fill_keys(array_keys($cols), 0.0);
 print_header('Payroll Register ' . $run['run_no'], true);
-echo company_letterhead();
+echo company_letterhead(null, report_run_branch_ids($runId));   // v27: the logo(s) of the companies of the run
 ?>
 <h1>Payroll Register</h1>
 <p class="center"><?= h($run['run_no']) ?>, <?= h(RUN_TYPES[$run['run_type']]) ?>, <?= h($run['pay_group_name']) ?>, Period <?= h(fmt_date($run['period_start'])) ?> – <?= h(fmt_date($run['period_end'])) ?>, Pay date <?= h(fmt_date($run['pay_date'])) ?>, Status: <?= h(strtoupper($run['status'])) ?></p>

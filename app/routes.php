@@ -189,6 +189,7 @@ return [
     'rpt_cash_listing'   => ['reports/payroll_reports.php', 'rpt_cash_listing'],
     'rpt_register'       => ['reports/register.php', 'rpt_register'],
     'rpt_attendance'     => ['reports/attendance.php', 'rpt_attendance'],
+    'rpt_att_logs'       => ['reports/att_logs.php', 'rpt_att_logs'],   // v27
     'rpt_earn_ded'       => ['reports/earn_ded.php', 'rpt_earn_ded'],
     'rpt_journal'        => ['reports/journal.php', 'rpt_journal'],
     'rpt_loans'          => ['reports/loans.php', 'rpt_loans'],

@@ -277,7 +277,7 @@ function memo_document(array $m, ?array $design = null, bool $forPrint = false):
     $br = !empty($m['branch_id']) ? row('SELECT * FROM branches WHERE id = ?', [(int)$m['branch_id']]) : null;
     $company = (string)(($br['company_name'] ?? '') ?: setting('company_name'));
     $address = (string)(($br['address'] ?? '') ?: setting('company_address'));
-    $logo = function_exists('report_logo_uri') ? report_logo_uri() : '';
+    $logo = function_exists('report_logo_uri') ? report_logo_uri(!empty($m['branch_id']) ? (int)$m['branch_id'] : null) : '';   // v27: the logo of the memo's company
     $kind = MEMO_KINDS[$m['kind'] ?? 'memo'] ?? 'Memorandum';
     $vars = '--m-font:' . h($d['memo_font']) . ';--m-size:' . h($d['memo_font_size']) . 'pt;--m-lh:' . h($d['memo_line_height']) . ';--m-accent:' . h($d['memo_accent']) . ';--m-margin:' . (int)$d['memo_margin'] . 'mm';
     $o = '<article class="memo-doc memo-paper-' . h(strtolower($d['memo_paper'])) . ' memo-title-' . h($d['memo_title_style']) . ' memo-head-' . h($d['memo_header'])

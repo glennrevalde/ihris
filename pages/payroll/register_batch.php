@@ -73,7 +73,9 @@ if (get('print')) {
     audit('payroll', 'register_print', 'payroll_runs', $runId);
     print_header(($regFixed ? 'Payroll Register II' : 'Payroll Register') . ($summary ? ' Summary' : '') . ' — ' . $run['run_no'], true, 'legal');
     $lh = $oneBranch ? row('SELECT * FROM branches WHERE id = ?', [$oneBranch]) : null;
-    echo company_letterhead($lh ?: row('SELECT * FROM branches WHERE is_default = 1 OR id = 1 ORDER BY is_default DESC LIMIT 1'));
+    // v27: the logo of the company chosen, else of the companies of the selection / of the run
+    echo company_letterhead($lh ?: row('SELECT * FROM branches WHERE is_default = 1 OR id = 1 ORDER BY is_default DESC LIMIT 1'),
+        $oneBranch ? [$oneBranch] : ($f['branch_id'] ? array_map('intval', $f['branch_id']) : report_run_branch_ids($runId)));
     echo '<h1>Payroll Register' . ($regFixed ? ' II' : '') . ($summary ? ' Summary' : '') . ($lh ? ' — ' . h($lh['name']) : '') . '</h1>';
     echo '<div class="doc-meta"><div><strong>' . h($run['run_no']) . '</strong>, ' . h(RUN_TYPES[$run['run_type']] ?? $run['run_type']) . ', ' . h($run['pay_group_name']) . '</div>'
         . '<div>Period: ' . h(fmt_date($run['period_start'])) . ' – ' . h(fmt_date($run['period_end'])) . ', Pay date: ' . h(fmt_date($run['pay_date'])) . '</div>'

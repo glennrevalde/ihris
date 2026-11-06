@@ -2293,3 +2293,56 @@ table.reg.reg-summary td.nowrap { font-weight: 600; }
 .reg.exp-c .oc { display: none; }
 /* v23: the ( COPY ) mark sits under the payslip title instead of over the Period line */
 .ps .ps-copy { position: static; transform: none; display: block; text-align: center; margin: 2px 0 4px; font-size: 13px; }
+
+/* ===== v27: logos of companies / branches, Attendance Logs per Employee Listing ===== */
+.lh-logo-set, .ps-logo-set { display: inline-flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.lh-logo-set .lh-logo { max-height: 52px; max-width: 160px; }
+.ps-logo-set .ps-logo { max-height: 30px; margin: 0; }
+.ps-co > .ps-logo-set { display: flex; margin: 0 auto 4px; }
+.ps-co.lp-logo_left > .ps-logo-set, .ps-co.lp-logo_right > .ps-logo-set { margin: 0; }
+.letterhead.lp-logo_leftmost .lh-logo-set { grid-column: 1; grid-row: 1; justify-self: start; }
+.letterhead.lp-logo_rightmost .lh-logo-set { grid-column: 3; grid-row: 1; justify-self: end; }
+.blogo-list { display: flex; flex-direction: column; }
+.blogo-row { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 12px 20px; border-top: 1px solid var(--border); }
+.blogo-row:first-child { border-top: 0; }
+.blogo-row.is-off { opacity: .7; }
+.blogo-thumb { width: 96px; height: 48px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fff; display: grid; place-items: center; overflow: hidden; }
+.blogo-thumb img { max-width: 88px; max-height: 40px; object-fit: contain; }
+.blogo-thumb.is-empty { background: var(--surface-2); border-style: dashed; color: var(--faint); font-size: 12px; }
+.blogo-name { display: flex; flex-direction: column; min-width: 0; }
+.blogo-name strong { font-weight: 600; overflow-wrap: anywhere; }
+.blogo-name small { color: var(--muted); font-size: 12.5px; }
+.blogo-form { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.blogo-form input[type=file] { width: 250px; min-height: 34px; padding: 4px 6px; font-size: 12.5px; }
+@media (max-width: 760px) {
+  .blogo-row { grid-template-columns: 72px minmax(0, 1fr); padding: 12px 14px; }
+  .blogo-thumb { width: 72px; height: 40px; }
+  .blogo-form { grid-column: 1 / -1; justify-content: flex-start; }
+  .blogo-form input[type=file] { width: 100%; }
+}
+/* Attendance Logs per Employee Listing: one narrow column a day, the logs one under the other */
+.alog-screen th, .alog-screen td { vertical-align: top; }
+.alog-screen .alog-day { min-width: 58px; font-variant-numeric: tabular-nums; }
+.alog-screen .alog-day.is-sun, .alog-table .alog-day.is-sun { color: var(--red); }
+.alog-cell { font-variant-numeric: tabular-nums; white-space: nowrap; line-height: 1.45; }
+.alog-screen .alog-cell { font-size: 12.5px; color: var(--text); }
+.alog-screen td.alog-cell:empty { background: var(--surface-2); }
+.alog-screen .alog-fix { position: sticky; background: #fff; z-index: 2; }
+.alog-screen thead .alog-fix { background: var(--surface-2); z-index: 3; }
+.alog-screen .alog-fix-1 { left: 0; min-width: 96px; }
+.alog-screen .alog-fix-2 { left: 96px; min-width: 190px; box-shadow: 1px 0 0 var(--border); }
+.alog-screen tbody tr:hover .alog-fix { background: #f6f8fd; }
+.alog-screen tr.alog-months th { text-align: center; color: var(--text-2); border-bottom: 1px solid var(--border); }
+.alog-wrap { max-height: 70vh; }
+.alog-filters input[type=date] { min-width: 150px; }
+.alog-table { font-size: 9.5px; }
+.alog-table th, .alog-table td { padding: 3px 4px; vertical-align: top; }
+.alog-table .alog-cell { font-size: 9.5px; }
+.alog-meta { margin-top: 4px; }
+.alog-note { font-size: 10.5px; color: #444; margin: 6px 0 0; }
+@media (max-width: 640px) {
+  .alog-screen .alog-fix-1 { min-width: 78px; }
+  .alog-screen .alog-fix-2 { left: 78px; min-width: 130px; }
+  .alog-screen .alog-fix-2 small { display: none; }
+}
+@media print { .alog-table thead { display: table-header-group; } }

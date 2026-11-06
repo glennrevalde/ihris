@@ -50,7 +50,7 @@ if (get('csv')) {
 }
 if (get('print')) {
     print_header('Loan & Ledger Balances', true);
-    echo company_letterhead();
+    echo company_letterhead($branchF ? row('SELECT * FROM branches WHERE id = ?', [$branchF]) : null);   // v27: the company chosen prints its name and logo
     echo '<h1>Loan and Ledger Balances</h1>';
     echo '<div class="doc-meta"><div>' . h($statusF ? label($statusF) . ' ledgers' : 'All ledgers') . ($typeF ? ', ' . h(label($typeF)) : '') . '</div><div>As of ' . h(fmt_date(today())) . '</div></div>';
     echo report_selection_html($selF, ['Ledger type' => $typeF ? label($typeF) : null, 'Status' => $statusF ? label($statusF) : 'All'], true);

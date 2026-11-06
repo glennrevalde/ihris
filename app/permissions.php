@@ -165,6 +165,7 @@ function perm_defs(): array
         'rpt_cash_listing' => ['a' => 'view print export', 'def' => 'payroll'],
         'rpt_register' => ['a' => 'view print export', 'def' => 'payroll'],
         'rpt_attendance' => ['a' => 'view print export', 'def' => 'hr payroll'],
+        'rpt_att_logs' => ['a' => 'view print export', 'def' => 'hr payroll'],   // v27 Attendance Logs per Employee Listing
         'rpt_earn_ded' => ['a' => 'view print export', 'def' => 'payroll'],
         'rpt_ytd' => ['a' => 'view', 'def' => 'payroll'],
         'rpt_journal' => ['a' => 'view print export', 'def' => 'payroll'],

@@ -31,7 +31,8 @@ if (get('csv') && $period) {
 }
 if (get('print') && $period) {
     print_header('Attendance Summary — ' . pt_period_label($period), true);
-    echo company_letterhead();
+    $lhIds = id_list($f['branch_id']);   // v27: the company chosen prints its name and logo
+    echo company_letterhead(count($lhIds) === 1 ? row('SELECT * FROM branches WHERE id = ?', [$lhIds[0]]) : null, $lhIds);
     echo '<h1>Attendance Summary Report</h1>';
     echo '<div class="doc-meta"><div><strong>' . h($period['pay_group_name']) . '</strong>, ' . h(pt_period_label($period, false)) . '</div><div>Printed ' . h(fmt_dt(now())) . '</div></div>';
     echo report_selection_html($f, [], true);

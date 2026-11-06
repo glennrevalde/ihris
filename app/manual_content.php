@@ -1524,7 +1524,7 @@ return [
     'Design tab: choose the font, size, line spacing, accent color, letterhead (logo and name centered, logo at the left, name only, none), the title style, the paper (A4, Letter, Legal), the margins, the footer text, the acknowledgment block, the DRAFT watermark and the number prefixes. The sample at the right changes as you choose; press Save design.',
 ],
 'rules' => [
-    'The logo of the letterhead is the company logo uploaded in System Settings, Company logo on reports.',
+    'The logo of the letterhead is the logo of the memo\'s company or branch (System Settings, Logos of companies and branches), else the default logo of Company logo on reports.',
     'A changed design applies to every memo shown or printed from then on, old ones included.',
     'Changes to the templates and the design are recorded in the audit trail.',
     'The Letterhead choices of the design match the logo placements of the reports: centered, left beside the name, left most, right beside the name, right most, name only or none.',
@@ -3577,6 +3577,37 @@ return [
 ],
 
 [
+'slug' => 'rpt_att_logs',
+'section' => 'reports',
+'title' => 'Attendance Logs per Employee Listing',
+'summary' => 'The valid logs of every employee, one column a day, for any date range.',
+'route' => 'rpt_att_logs',
+'roles' => ['hr', 'payroll'],
+'menu' => 'Reports > Attendance Logs per Employee Listing',
+'keywords' => 'attendance logs per employee listing daily logs time in time out biometric punches date range listing print pdf csv',
+'purpose' => 'Shows at a glance who logged in and out on each day of a period, straight from the registered logs, before (or after) they are summarized for payroll.',
+'steps' => [
+    'Choose Date from and Date to (any range up to 62 days), then narrow by company / branch, department, employee group, employee type or a name.',
+    'Show: All employees, or Only employees with logs. Sort by employee name or employee no.',
+    'Press Apply, then Print (Print or Save as PDF) or Export CSV.',
+],
+'fields' => [
+    ['Employee No., Employee Name, Default Shift Time', 'The employee and the time in and time out of the shift of the Employee Masterfile (a flexible shift shows its hours).'],
+    ['Day columns', 'One column per date, headed by the day of the month and the weekday (1 (Th), 2 (Fr) ...); Sundays in red. A range over two months adds a row with the month names.'],
+    ['Logs of a day', 'The registered valid logs of the employee that day, earliest first, one under the other. A log after midnight of a night worker shows on the day of the shift, marked + (as in the Daily Time Record).'],
+],
+'rules' => [
+    'Double logs (the same log type again within the minutes of the AMS policy # of minutes between LOGS w/ same TYPE as INVALID) and rejected web check-ins are not included; the same minute recorded twice shows once.',
+    'The printed report shows the company / branch of the selection (name and logo) at the top, the period, the other report filters, and Prepared by / Checked by / Approved by at the end.',
+    'It lists the employees employed during the range: hired on or before the end and not separated before the start.',
+],
+'tips' => [
+    'A range of more than 16 days prints on legal landscape paper; Save as PDF shrinks a wider listing to the page.',
+],
+'related' => ['rpt_attendance', 'dtr', 'att_logs', 'import_logs'],
+],
+
+[
 'slug' => 'rpt_earn_ded',
 'section' => 'reports',
 'title' => 'Earnings and Deductions Report',
@@ -4688,7 +4719,8 @@ return [
     ['Attendance rules', 'Grace period, what is deducted beyond it, the deduction basis, the minimum overtime, whether overtime needs authorization, the night differential window, automatic break deduction, the habitual tardiness thresholds, the geofence mode, the selfie requirement and the repeat punch interval.'],
     ['Payroll and compliance', 'Hours per day, the default days-per-year factor, the night differential percentage, holiday pay for daily-rated staff, the 90,000 peso ceiling, the minimum take-home percentage, the cap on loss and damage deductions, voluntary Pag-IBIG, the non-taxable monetized leave days, the 13th month deadline, the final pay release period and the payslip footer note.'],
     ['Discipline and performance', 'The rolling period for counting prior offences, the minimum days to submit a written explanation and the underperformance threshold.'],
-    ['Company logo on reports', 'Upload the company logo (PNG, JPG, GIF or WEBP; resized to at most 600 x 240 pixels), tick Add Company Logo to Reports, and tick the reports that print it: one, several, or All reports. Without a logo, or with the box unticked, the reports keep the text letterhead. Remove logo deletes it.'],
+    ['Company logo on reports', 'Upload the default logo (PNG, JPG, GIF or WEBP; resized to at most 600 x 240 pixels), tick Add Company Logo to Reports, and tick the reports that print it: one, several, or All reports. The default logo prints for every company and branch without a logo of its own. Without a logo, or with the box unticked, the reports keep the text letterhead. Remove default logo deletes it.'],
+    ['Logos of companies and branches', 'Each company / branch of the Company Table has a row: Upload (or Replace) its own logo, or Remove it to go back to the default logo. The row says which logo its reports print: Own logo, Prints the default logo, Prints the only logo saved, or No logo.'],
     ['Placement of the logo', 'Where the logo goes in the letterhead of the reports: Logo and company name, centered; Logo at the left, name beside it; Logo at the left most of the report (name centered); Logo at the right, name beside it; Logo at the right most of the report (name centered). The same choices are offered for the letterhead of the memoranda (Memo Templates & Design).'],
     ['Habitual tardiness: times late per month', 'Flags the employee for HR review / NTE and lists the employee in the To-do\'s of the dashboard of the immediate superior and of HR (Notice to Explain). The monthly tardiness cap does the same.'],
 ],
@@ -4703,6 +4735,7 @@ return [
     'After saving this page, check AMS Policies, Payroll Parameters and Signatory. Those pages keep their own groups of settings and are worth a quick look whenever System Settings has been saved.',
     'Leave the email mode on Log only while testing, and open the messages in the Email Outbox to click the approval buttons.',
     'The logo is printed above the company name of the letterhead of the ticked reports (and on the payslip). The memoranda use it through their own design setting.',
+    'Which logo a report prints: a report of one company or branch (the payslip, DTR, ledger or final pay of its employee, a memorandum of the company, a report filtered to one company / branch) prints that company\'s own logo, else the default logo. When only one logo is saved in all (the default, or the logo of one company), it prints on the reports of every company. A report of several or all companies (a payroll register, the journal, a report of All companies) prints the default logo; without a default logo it prints the logos of the companies in the report side by side.',
 ],
 'related' => ['outbox', 'ams_policies', 'payroll_params', 'signatories'],
 ],

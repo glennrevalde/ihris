@@ -116,7 +116,7 @@ if ($tab === 'design'):
           </div>
         <?php endforeach; ?>
         </div>
-        <p class="small muted">The logo of the letterhead is the company logo of System Settings, Company logo on reports<?= report_logo_uri() ? '' : ' (none uploaded yet)' ?>.</p>
+        <p class="small muted">The logo of the letterhead is the logo of the memo's company or branch (System Settings, Logos of companies and branches), else the default logo of Company logo on reports<?= report_logo_any() ? '' : ' (none uploaded yet)' ?>.</p>
         <div class="form-actions"><button class="btn btn-primary">Save design</button></div>
       </form>
       <div class="memo-wrap" data-design-preview><?= memo_document($sample, $d) ?></div>
