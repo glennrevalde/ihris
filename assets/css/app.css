@@ -2346,3 +2346,31 @@ table.reg.reg-summary td.nowrap { font-weight: 600; }
   .alog-screen .alog-fix-2 small { display: none; }
 }
 @media print { .alog-table thead { display: table-header-group; } }
+
+/* ===== v28: Attendance Summary per Employee Detailed Listing (WRK, LTE, UND, ABS, NWRK per day) ===== */
+.ad-td { vertical-align: top; }
+.ad-cell { display: grid; gap: 1px; min-width: 64px; font-variant-numeric: tabular-nums; }
+.ad-l { display: flex; justify-content: space-between; gap: 6px; line-height: 1.35; }
+.ad-l b { font-weight: 500; color: var(--muted); font-size: .86em; letter-spacing: 0; }
+.ad-l i { font-style: normal; color: var(--text); }
+.ad-l.is-code b { color: var(--primary-700); font-weight: 600; }
+.ad-l.is-ded i { color: var(--red); }
+.ad-l.is-net { border-top: 1px solid var(--border); margin-top: 1px; padding-top: 1px; }
+.ad-l.is-net b, .ad-l.is-net i { color: var(--text); font-weight: 650; }
+.ad-tag { font-size: .86em; font-weight: 600; color: var(--primary-700); }
+.ad-net { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ad-incl { display: block; margin-top: 3px; font-size: .82em; color: var(--muted); white-space: normal; }
+.ad-screen .ad-td { font-size: 12px; }
+.ad-screen td.ad-td:empty { background: var(--surface-2); }
+.ad-screen .ad-total { background: var(--surface-2); min-width: 104px; }
+.ad-screen.is-net-view .ad-td { text-align: center; }
+.ad-screen tfoot td { font-weight: 600; }
+.ad-table .ad-td { font-size: 8.5px; padding: 2px 3px; }
+.ad-table .ad-cell { min-width: 0; gap: 0; }
+.ad-table .ad-l { gap: 3px; line-height: 1.25; }
+.ad-table .ad-l b, .ad-table .ad-l i, .ad-table .ad-tag { color: #111; }
+.ad-table .ad-l.is-ded i { color: #b42318; }
+.ad-table .ad-l.is-net { border-top-color: #9aa3b2; }
+.ad-table .ad-total { background: #f5f7fa; }
+.ad-table.is-net-view .ad-td { text-align: center; font-size: 9.5px; }
+.ad-table .ad-incl { color: #444; }

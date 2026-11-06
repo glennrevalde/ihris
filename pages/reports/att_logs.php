@@ -2,7 +2,7 @@
 /**
  * v27 Reports > Attendance Logs per Employee Listing.
  *
- * One row per employee (Employee No., Employee Name, Default Shift Time) and one column per date of a flexible
+ * One row per employee (Employee No., Employee Name, Default Shift Time: v28 every log time of the shift) and one column per date of a flexible
  * date range, headed by the day of the month and the abbreviation of the weekday ("1 (Th)"). Each cell lists the
  * registered valid logs of the employee on that date, one under the other: a rejected web check-in and a
  * double log (a repeat of the same log type within the AMS policy "# of minutes between LOGS w/ same TYPE as
@@ -106,17 +106,9 @@ if ($show === 'logs') {
 }
 
 // --- the default shift time of each employee
-$shiftTime = function (?int $shiftId): string {
-    $s = $shiftId ? shift_row($shiftId) : null;
-    if (!$s) {
-        return '—';
-    }
-    if (shift_flex_type($s)) {
-        return shift_coverage($s);
-    }
-    $t = fn($v) => $v ? date('h:iA', strtotime('2000-01-01 ' . $v)) : '?';
-    return $t($s['time_in']) . '-' . $t($s['time_out']);
-};
+// v28: the complete time of the default shift, every log (4 logs: both spans; 6 logs: the three spans)
+$shiftTime = fn(?int $shiftId): string => implode(', ', report_shift_times($shiftId ? shift_row($shiftId) : null)) ?: '—';
+$shiftHtml = fn(?int $shiftId): string => implode('<br>', array_map('h', report_shift_times($shiftId ? shift_row($shiftId) : null))) ?: '—';
 $dow = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 $dayHead = fn($d) => (int)substr($d, 8, 2) . ' (' . $dow[(int)date('w', strtotime($d))] . ')';
 $months = [];
@@ -203,7 +195,7 @@ if (get('print')) {
         echo '<tr><td colspan="' . (3 + count($dates)) . '" class="center">No employee in this selection.</td></tr>';
     }
     foreach ($emps as $e) {
-        echo '<tr><td class="nowrap">' . h($e['employee_no']) . '</td><td>' . h(mb_strtoupper(full_name($e))) . '</td><td class="nowrap">' . h($shiftTime($e['shift_id'] ? (int)$e['shift_id'] : null)) . '</td>';
+        echo '<tr><td class="nowrap">' . h($e['employee_no']) . '</td><td>' . h(mb_strtoupper(full_name($e))) . '</td><td class="nowrap">' . $shiftHtml($e['shift_id'] ? (int)$e['shift_id'] : null) . '</td>';
         foreach ($dates as $d) {
             echo '<td class="center alog-cell">' . $cell($logs[(int)$e['id']][$d] ?? []) . '</td>';
         }
@@ -260,7 +252,7 @@ page_header('Attendance Logs per Employee Listing', [
         <tr>
           <td class="alog-fix alog-fix-1 nowrap"><?= h($e['employee_no']) ?></td>
           <td class="alog-fix alog-fix-2"><strong><?= h(full_name($e)) ?></strong><?php if ($e['unit_name']): ?><br><small class="muted"><?= h($e['unit_name']) ?></small><?php endif; ?></td>
-          <td class="nowrap small"><?= h($shiftTime($e['shift_id'] ? (int)$e['shift_id'] : null)) ?></td>
+          <td class="nowrap small"><?= $shiftHtml($e['shift_id'] ? (int)$e['shift_id'] : null) ?></td>
           <?php foreach ($dates as $d): ?><td class="center alog-cell"><?= $cell($logs[(int)$e['id']][$d] ?? []) ?></td><?php endforeach; ?>
         </tr>
       <?php endforeach; ?>

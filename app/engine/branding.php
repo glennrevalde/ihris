@@ -42,6 +42,7 @@ function report_logo_reports(): array
         'dtr_print' => ['Daily Time Record', 'Attendance'],
         'rpt_attendance' => ['Attendance Summary Report', 'Attendance'],
         'rpt_att_logs' => ['Attendance Logs per Employee Listing', 'Attendance'],
+        'rpt_att_detail' => ['Attendance Summary per Employee Detailed Listing', 'Attendance'],
         'payslip' => ['Payslip', 'Payroll'],
         'payslips_print' => ['Print Payslips (batch)', 'Payroll'],
         'pay_register' => ['Payroll Batch Register', 'Payroll'],
@@ -202,6 +203,43 @@ function report_logo_img(string $class = 'lh-logo', ?string $route = null, array
         return $imgs;
     }
     return '<span class="' . h($class) . '-set">' . $imgs . '</span>';   // several companies: their logos together
+}
+
+/**
+ * v28: the complete time of a shift for the reports, span by span: 2 logs = one span (08:00AM-05:00PM); 4 logs =
+ * Time in to Break out and Break in to Time out (08:00AM-12:00PM, 01:00PM-05:00PM); 6 logs = three spans; the
+ * pre-arranged overtime adds "OT 07:00PM-09:30PM". A 4-log shift without break times shows its break minutes;
+ * a flexible shift shows its hours. Returns the spans (an empty list without shift).
+ */
+function report_shift_times(?array $shift): array
+{
+    if (!$shift) {
+        return [];
+    }
+    if (shift_flex_type($shift)) {
+        return [shift_coverage($shift)];
+    }
+    $t = fn($v) => $v ? date('h:iA', strtotime('2000-01-01 ' . $v)) : '?';
+    $n = shift_logs_per_day($shift);
+    $marks = [$shift['time_in']];
+    if ($n >= 4 && !empty($shift['break_out1']) && !empty($shift['break_in1'])) {
+        array_push($marks, $shift['break_out1'], $shift['break_in1']);
+    }
+    if ($n >= 6 && !empty($shift['break_out2']) && !empty($shift['break_in2'])) {
+        array_push($marks, $shift['break_out2'], $shift['break_in2']);
+    }
+    $marks[] = $shift['time_out'];
+    $out = [];
+    for ($i = 0; $i + 1 < count($marks); $i += 2) {
+        $out[] = $t($marks[$i]) . '-' . $t($marks[$i + 1]);
+    }
+    if ($n >= 4 && count($marks) === 2 && (int)($shift['break_minutes'] ?? 0) > 0) {
+        $out[0] .= ' (' . (int)$shift['break_minutes'] . '-min. break)';   // a break without set times
+    }
+    if (!empty($shift['ot_in']) && !empty($shift['ot_out'])) {
+        $out[] = 'OT ' . $t($shift['ot_in']) . '-' . $t($shift['ot_out']);
+    }
+    return $out;
 }
 
 /** v27: the companies / branches of the employees of a payroll run (for the logos of a run-wide report). */

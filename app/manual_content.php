@@ -3592,7 +3592,7 @@ return [
     'Press Apply, then Print (Print or Save as PDF) or Export CSV.',
 ],
 'fields' => [
-    ['Employee No., Employee Name, Default Shift Time', 'The employee and the time in and time out of the shift of the Employee Masterfile (a flexible shift shows its hours).'],
+    ['Employee No., Employee Name, Default Shift Time', 'The employee and the complete time of the shift of the Employee Masterfile, every log: a 2-log shift 08:00AM-05:00PM; a 4-log shift both spans, 08:00AM-12:00PM and 01:00PM-05:00PM; a 6-log shift its three spans; a pre-arranged overtime adds OT 07:00PM-09:30PM; a 4-log shift without break times shows its break minutes; a flexible shift shows its hours.'],
     ['Day columns', 'One column per date, headed by the day of the month and the weekday (1 (Th), 2 (Fr) ...); Sundays in red. A range over two months adds a row with the month names.'],
     ['Logs of a day', 'The registered valid logs of the employee that day, earliest first, one under the other. A log after midnight of a night worker shows on the day of the shift, marked + (as in the Daily Time Record).'],
 ],
@@ -3605,6 +3605,41 @@ return [
     'A range of more than 16 days prints on legal landscape paper; Save as PDF shrinks a wider listing to the page.',
 ],
 'related' => ['rpt_attendance', 'dtr', 'att_logs', 'import_logs'],
+],
+
+[
+'slug' => 'rpt_att_detail',
+'section' => 'reports',
+'title' => 'Attendance Summary per Employee Detailed Listing',
+'summary' => 'Work, late, undertime, absent and net work hours of every employee, day by day, for any date range.',
+'route' => 'rpt_att_detail',
+'roles' => ['hr', 'payroll'],
+'menu' => 'Reports > Attendance Summary per Employee Detailed Listing',
+'keywords' => 'attendance summary per employee detailed listing daily work late undertime absent net work wrk lte und abs nwrk leave vl sl el date range print pdf csv',
+'purpose' => 'A daily view of the attendance of each employee: how many hours each day was due, how much of it was lost to lateness, undertime and absence, and the net work that remains.',
+'steps' => [
+    'Choose Date from and Date to (any range up to 62 days), then narrow by company / branch, department, employee group, employee type or a name.',
+    'Display: Detailed (WRK, LTE, UND, ABS and NWRK each day) or Net work only (the net work hours alone, a concise view).',
+    'Press Apply, then Print (Print or Save as PDF) or Export CSV.',
+],
+'fields' => [
+    ['WRK (Work)', 'The required hours of the shift of a working day (on a flexible shift that counts only the rendered hours, those hours). An approved paid leave counts as work but shows its leave code instead of WRK (VL 8, SL 8, EL 8, ML 8 ...).'],
+    ['LTE, UND, ABS', 'The late, undertime and absent hours of the day, as the Daily Time Record computed them (a late within the grace period is 0).'],
+    ['NWRK (Net Work)', 'Work minus (Late + Undertime + Absent).'],
+    ['TOTAL', 'The sums of the period: the work includes the leave hours (listed under the figures: incl. VL 8, RD 4, HOL 1 day). The grand total of every employee closes the listing.'],
+    ['RD and HOL', 'RD = a rest day worked (the regular hours rendered; no late, undertime or absence). HOL = a holiday not worked (no hours). A rest day without work, and a date not yet computed, stay blank.'],
+],
+'rules' => [
+    'Rendered and approved overtime is not included.',
+    'A leave without pay shows its code with the hours as absent (net work 0). An unresolved incomplete day counts the hours not rendered as absent, as the Attendance Summary does.',
+    'The figures come from the Daily Time Records; days computed by an older version of the computation are rebuilt first (locked periods are kept as approved).',
+    'The printed report shows the company / branch of the selection (name and logo) at the top, the period, the other report filters, and Prepared by / Checked by / Approved by at the end.',
+],
+'tips' => [
+    'Use Net work only for a one-page overview of a period; switch to Detailed to see where the hours were lost.',
+    'A range of more than 16 days prints on legal landscape paper; Save as PDF shrinks a wider listing to the page.',
+],
+'related' => ['rpt_att_logs', 'rpt_attendance', 'dtr'],
 ],
 
 [
