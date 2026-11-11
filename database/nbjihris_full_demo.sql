@@ -5,7 +5,7 @@
 --  Generated: 2026-11-11 20:29
 --
 --  WHAT IT CONTAINS
---   1. The company database `nbjhris`: every table of version 21 with the reference
+--   1. The company database `nbjihris`: every table of version 21 with the reference
 --      data (statutory tables SSS, PhilHealth, Pag-IBIG and tax, leave types,
 --      transaction codes, holidays, settings, roles and permissions of every page)
 --      and the DEMO DATA of Sample Holdings Corporation: 3 companies / branches,
@@ -13,30 +13,31 @@
 --      biometric logs and daily time records August 1 to September 18, 2026,
 --      approved August cutoffs and 7 payroll runs, leaves, loans and ledgers,
 --      evaluations, disciplinary cases and a retroactive step increase.
---   2. The master database `nbjhrismaster`: the multi-company tables (companies,
+--   2. The master database `nbjihrismaster`: the multi-company tables (companies,
 --      Company Codes, memberships, Super Admin accounts, linked accounts, logs),
---      empty. On the first page load the application registers `nbjhris` as
+--      empty. On the first page load the application registers `nbjihris` as
 --      Company 1 with its Company Code, maps its user accounts for sign-in and
 --      creates the Super Admin account of config/config.php (super_admin_username
 --      / super_admin_password).
---   Other company databases (nbjhris_company_002 ...) are created by the Super Admin
+--   Other company databases (nbjihris_company_002, nbjihris_company_003 ...) are created by the Super Admin
 --   (Create Company); they are not part of this file.
 --
 --  !! IT DROPS AND RE-CREATES EVERY TABLE OF BOTH DATABASES. Do not import it over
 --  !! databases with live data (use database/upgrade_to_v21_mysql55.sql there).
 --
 --  DATABASE NAMES
---   Company database : `nbjhris`        (the 2 lines marked COMPANY DATABASE NAME)
---   Master database  : `nbjhrismaster`  (the 2 lines marked MASTER DATABASE NAME)
+--   Company database : `nbjihris`         (the 2 lines marked COMPANY DATABASE NAME)
+--   Master database  : `nbjihrismaster`   (the 2 lines marked MASTER DATABASE NAME)
+--   Later companies  : `nbjihris_company_002`, `nbjihris_company_003` ... (made by Create Company)
 --   config/config.php of this install MUST have these three lines, or the
 --   application would use the default `ihris_master` of your other HRIS:
---     'db_name'           => 'nbjhris',
---     'master_db_name'    => 'nbjhrismaster',
---     'company_db_prefix' => 'nbjhris_company_',
+--     'db_name'           => 'nbjihris',
+--     'master_db_name'    => 'nbjihrismaster',
+--     'company_db_prefix' => 'nbjihris_company_',
 --   It never touches `ihris`, `ihris_master` or `ihris_company_...`.
 --
 --  HOW TO IMPORT
---   Command    : mysql -u root -p < nbjhris_full_v21_demo_mysql55.sql
+--   Command    : mysql -u root -p < nbjihris_full_v21_demo_mysql55.sql
 --   phpMyAdmin : Import tab > choose this file > Go (no database selected)
 --   The MySQL account of config/config.php needs every right on both databases
 --   (and CREATE to add companies), e.g.
@@ -59,8 +60,8 @@ SET SQL_MODE = 'NO_AUTO_VALUE_ON_ZERO';
 -- =====================================================================
 --  1. COMPANY DATABASE (with demo data)
 -- =====================================================================
-CREATE DATABASE IF NOT EXISTS `nbjhris` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;  -- COMPANY DATABASE NAME
-USE `nbjhris`;  -- COMPANY DATABASE NAME
+CREATE DATABASE IF NOT EXISTS `nbjihris` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;  -- COMPANY DATABASE NAME
+USE `nbjihris`;  -- COMPANY DATABASE NAME
 
 /*!40014 SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0 */;
 /*!40014 SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0 */;
@@ -7013,8 +7014,8 @@ INSERT INTO `users` VALUES
 --  2. MASTER DATABASE (multi-company)
 -- =====================================================================
 SET FOREIGN_KEY_CHECKS = 0;
-CREATE DATABASE IF NOT EXISTS `nbjhrismaster` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;  -- MASTER DATABASE NAME
-USE `nbjhrismaster`;  -- MASTER DATABASE NAME
+CREATE DATABASE IF NOT EXISTS `nbjihrismaster` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;  -- MASTER DATABASE NAME
+USE `nbjihrismaster`;  -- MASTER DATABASE NAME
 
 -- master_meta
 DROP TABLE IF EXISTS `master_meta`;
