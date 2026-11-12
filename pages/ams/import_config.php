@@ -6,6 +6,8 @@
  * v22: the layout "Attendance record report" reads an Excel report with one block per employee (e.g. JJM Logs):
  * the ID label, the period label, the day-number row and the first time row, and for every layout the
  * minimum minutes between two logs of the same day (a repeated tap on the terminal is not staged).
+ * v29: Sheet 0 = every sheet of the workbook (the ready-made "ZKTeco attlog.xlsx": the logs are on the "Att.log report"
+ * sheet of the ZKTeco export, and a workbook of copied reports holds one report per sheet).
  */
 $rpOk = mig_column_exists('import_profiles', 'rp_id_label');   // database version 19
 $id = (int)get('id', 0);
@@ -40,7 +42,7 @@ if (is_post()) {
         $data += ['rp_id_label' => mb_substr(trim((string)post('rp_id_label')), 0, 40) ?: 'User ID:', 'rp_name_label' => mb_substr(trim((string)post('rp_name_label')), 0, 40) ?: null,
             'rp_period_label' => mb_substr(trim((string)post('rp_period_label')), 0, 40) ?: null, 'rp_date_format' => mb_substr(trim((string)post('rp_date_format')), 0, 20) ?: 'Y-m-d',
             'rp_day_row' => post('rp_day_row') === '' ? 1 : max(0, min(9, (int)post('rp_day_row'))), 'rp_time_row' => max(1, min(9, (int)post('rp_time_row') ?: 2)),
-            'rp_sheet' => max(1, min(50, (int)post('rp_sheet') ?: 1)), 'min_gap' => max(0, min(120, (int)post('min_gap')))];
+            'rp_sheet' => trim((string)post('rp_sheet')) === '' ? 1 : max(0, min(50, (int)post('rp_sheet'))), 'min_gap' => max(0, min(120, (int)post('min_gap')))];
     }
     foreach (['id', 'date', 'time', 'type', 'dev'] as $k) {
         $data['fw_' . $k . '_start'] = post('fw_' . $k . '_start') !== '' ? (int)post('fw_' . $k . '_start') : null;
@@ -71,6 +73,11 @@ if (is_post()) {
                 redirect('import_config', ['id' => $id]);
             }
             // test import: parse the uploaded sample without staging anything
+            $upErr = (int)($_FILES['sample']['error'] ?? UPLOAD_ERR_NO_FILE);
+            if ($upErr === UPLOAD_ERR_INI_SIZE || $upErr === UPLOAD_ERR_FORM_SIZE) {
+                // v29: a workbook of many reports can be larger than the server accepts
+                throw new RuntimeException('The sample file is larger than the server accepts (upload_max_filesize ' . ini_get('upload_max_filesize') . '). Test with a smaller file, or raise upload_max_filesize and post_max_size in php.ini.');
+            }
             if (empty($_FILES['sample']['tmp_name'])) {
                 throw new RuntimeException('Choose a sample log file to test the configuration.');
             }
@@ -78,13 +85,28 @@ if (is_post()) {
             $tmp = (string)$_FILES['sample']['tmp_name'];
             if ($profile['layout'] === 'report') {
                 // the first rows of the sheet, cell by cell (an .xls is not text)
+                // v29 Sheet 0: the first sheet holding the Employee ID label, and the list of the sheets read
                 $raw = [];
-                foreach (array_slice(grid_read_file($tmp, max(0, (int)$profile['rp_sheet'] - 1)), 0, 12, true) as $rn => $cells) {
+                $grid = [];
+                $sheetsRead = [];
+                if ((int)$profile['rp_sheet'] === 0) {
+                    $idNorm = mb_strtolower(preg_replace('/\s+/u', '', (string)(($profile['rp_id_label'] ?? '') ?: 'User ID:')));
+                    foreach (grid_read_sheets($tmp) as $sh) {
+                        if (import_grid_has_label($sh['grid'], $idNorm)) {
+                            $sheetsRead[] = (string)$sh['name'];
+                            $grid = $grid ?: $sh['grid'];
+                        }
+                    }
+                } else {
+                    $grid = grid_read_file($tmp, max(0, (int)$profile['rp_sheet'] - 1));
+                }
+                foreach (array_slice($grid, 0, 12, true) as $rn => $cells) {
                     $raw[] = sprintf('%3d  ', $rn + 1) . implode('  |  ', array_map(fn($c, $v) => import_col_letter($c) . ': ' . str_replace(["\r", "\n"], ['', ' / '], trim((string)$v)), array_keys($cells), $cells));
                 }
                 $all = parse_log_file($tmp, $profile);
                 $_SESSION['import_test'] = ['rows' => array_slice($all, 0, 40), 'raw' => $raw, 'name' => (string)$_FILES['sample']['name'], 'report' => true,
-                    'count' => count($all), 'ids' => count(array_unique(array_column($all, 'bio_id')))];
+                    'count' => count($all), 'ids' => count(array_unique(array_column($all, 'bio_id'))), 'sheets' => $sheetsRead];
+                unset($all, $grid);
             } else {
                 $_SESSION['import_test'] = ['rows' => array_slice(parse_log_file($tmp, $profile, 25), 0, 25),
                     'raw' => array_slice(file($tmp, FILE_IGNORE_NEW_LINES), 0, 8), 'name' => (string)$_FILES['sample']['name']];
@@ -167,15 +189,15 @@ page_header('Import Log Configuration', [
           <div class="field"><label>Employee name label</label><input name="rp_name_label" value="<?= $v('rp_name_label', 'Name:') ?>" maxlength="40">
             <span class="help">For the preview and the log details only.</span></div>
           <div class="field"><label>Period label</label><input name="rp_period_label" value="<?= $v('rp_period_label', 'Attendance date:') ?>" maxlength="40">
-            <span class="help">e.g. <code>Attendance date:2026-10-15~2026-10-28</code> (JJM) or <code>Att. Time</code> with the dates in the next cell (NBJ). Without it the Date from of the upload gives the month.</span></div>
+            <span class="help">e.g. <code>Attendance date:2026-10-15~2026-10-28</code> (JJM) or <code>Att. Time</code> with the dates in the next cell (NBJ Logs, ZKTeco attlog.xlsx). Without it the Date from of the upload gives the month.</span></div>
           <div class="field"><label>Period date format</label><input name="rp_date_format" value="<?= $v('rp_date_format', 'Y-m-d') ?>" maxlength="20">
             <span class="help"><code>Y-m-d</code> = 2026-10-15, <code>m/d/Y</code> = 10/15/2026</span></div>
           <div class="field"><label>Day-number row</label><input type="number" min="0" max="9" name="rp_day_row" value="<?= $v('rp_day_row', 1) ?>">
-            <span class="help">Rows below the ID row (1 = the next row, JJM Logs). 0 = one row of day numbers for the whole sheet, at the top (NBJ Logs).</span></div>
+            <span class="help">Rows below the ID row (1 = the next row, JJM Logs). 0 = one row of day numbers for the whole sheet, at the top (NBJ Logs, ZKTeco attlog.xlsx).</span></div>
           <div class="field"><label>First time row</label><input type="number" min="1" max="9" name="rp_time_row" value="<?= $v('rp_time_row', 2) ?>">
             <span class="help">Rows below the ID row; the times continue down to the next ID row.</span></div>
-          <div class="field"><label>Sheet</label><input type="number" min="1" max="50" name="rp_sheet" value="<?= $v('rp_sheet', 1) ?>">
-            <span class="help">1 = the first worksheet of the file.</span></div>
+          <div class="field"><label>Sheet</label><input type="number" min="0" max="50" name="rp_sheet" value="<?= $v('rp_sheet', 1) ?>">
+            <span class="help">1 = the first worksheet of the file. 0 = every sheet that holds the report (ZKTeco attlog.xlsx: the logs are on the Att.log report sheet; a workbook with one report per sheet is read whole).</span></div>
         </div>
       </fieldset>
       <?php endif; ?>
@@ -219,8 +241,10 @@ page_header('Import Log Configuration', [
 <?php if ($preview): ?>
 <div class="card">
   <h2>Preview — <?= h($preview['name']) ?></h2>
-  <?php if (!empty($preview['report'])): ?><p class="muted small"><?= number_format((int)$preview['count']) ?> log(s) read for <?= (int)$preview['ids'] ?> employee ID(s); the first 40 are listed. Repeated taps inside the minimum minutes are already left out.</p><?php endif; ?>
-  <h3><?= !empty($preview['report']) ? 'First rows of the sheet (column: value)' : 'Raw lines' ?></h3>
+  <?php if (!empty($preview['report'])): ?><p class="muted small"><?= number_format((int)$preview['count']) ?> log(s) read for <?= (int)$preview['ids'] ?> employee ID(s); the first 40 are listed. Repeated taps inside the minimum minutes are already left out.</p>
+    <?php if (!empty($preview['sheets'])): $shN = count($preview['sheets']); ?><p class="muted small"><?= $shN === 1 ? '1 sheet read' : $shN . ' sheets read' ?>: <?= h(implode(', ', array_slice($preview['sheets'], 0, 12))) ?><?= $shN > 12 ? ' and ' . ($shN - 12) . ' more' : '' ?>.<?= $shN > 1 ? ' The same log on two sheets is read once.' : '' ?></p><?php endif; ?>
+  <?php endif; ?>
+  <h3><?= !empty($preview['report']) ? 'First rows of the sheet' . (!empty($preview['sheets']) ? ' ' . h($preview['sheets'][0]) : '') . ' (column: value)' : 'Raw lines' ?></h3>
   <pre class="mono" style="background:var(--surface-2);padding:10px;border-radius:8px;overflow-x:auto"><?php
     $ruler = '';
   for ($i = 1; $i <= 80; $i++) {

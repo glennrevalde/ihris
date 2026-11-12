@@ -1351,6 +1351,18 @@ a.btn[aria-disabled="true"] { opacity: .55; pointer-events: none; }
 .closing-log li { margin: 3px 0; }
 .closing-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .closing-actions .spacer { flex: 1; }
+/* v29: re-opening a closed period (Super Admin) */
+.closing-history td { vertical-align: top; }
+.closing-row-acts { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.closing-history .ch-head { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-bottom: 2px; }
+.closing-history td.num { white-space: nowrap; }
+.closing-st-re { color: var(--red); font-weight: 600; }
+.closing-reopened { margin: 2px 0 6px; padding: 8px 12px; border-radius: 8px; background: var(--red-bg); border: 1px solid var(--red-bd); color: #7f1d1d; font-size: 13px; }
+.closing-reopened strong { color: var(--red); }
+.closing-reopen-facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 14px; margin: 0 0 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); }
+.closing-reopen-facts dt { font-size: 12px; color: var(--muted); font-weight: 600; }
+.closing-reopen-facts dd { margin: 2px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.modal-box .check { display: flex; gap: 8px; align-items: flex-start; margin: 10px 0 0; }
 @media (max-width: 1100px) { .closing-layout { grid-template-columns: 1fr; } }
 @media (max-width: 640px) {
   .closing-params .form-grid { grid-template-columns: 1fr; }
@@ -1358,6 +1370,7 @@ a.btn[aria-disabled="true"] { opacity: .55; pointer-events: none; }
   .closing-actions > .check { flex: 1 1 100%; }
   .closing-actions .spacer { display: none; }
   .closing-actions .btn { flex: 1 1 0; }
+  .closing-reopen-facts { grid-template-columns: 1fr 1fr; }
 }
 /* role list: keep its columns readable on a phone (the table scrolls sideways instead of squeezing) */
 #roleTbl { min-width: 820px; }

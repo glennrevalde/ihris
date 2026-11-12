@@ -32,10 +32,41 @@ function grid_read_file(string $path, int $sheet = 0): array
     return text_read_grid($text);
 }
 
+/**
+ * v29: every worksheet of a file, in the order of the workbook: [['name' => sheet name, 'grid' => grid], ...]. A ZKTeco
+ * attendance export keeps the logs on its third sheet ("Att.log report", after the schedule and the statistics), and a
+ * workbook of copied reports holds one report per sheet (one per site and cut-off). A text or HTML file is one sheet.
+ * The last file read is kept for the request (the configuration check and the reading use the same file).
+ */
+function grid_read_sheets(string $path): array
+{
+    static $memo = [];
+    $key = $path . '|' . (string)@filesize($path) . '|' . (string)@filemtime($path);
+    if (isset($memo[$key])) {
+        return $memo[$key];
+    }
+    $head = (string)@file_get_contents($path, false, null, 0, 8);
+    if ($head === "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1") {
+        $out = xls_read_book($path, null);
+    } elseif (substr($head, 0, 2) === 'PK') {
+        $out = xlsx_read_book($path, null);
+    } else {
+        $out = [['name' => (string)pathinfo($path, PATHINFO_FILENAME), 'grid' => grid_read_file($path)]];
+    }
+    $memo = [$key => $out];
+    return $out;
+}
+
 /* --------------------------------------------------------------- .xls (BIFF8 in an OLE2 compound file) */
 
 /** Grid of one worksheet of an Excel 97-2003 workbook. */
 function xls_read_grid(string $path, int $sheet = 0): array
+{
+    return xls_read_book($path, $sheet)[0]['grid'];
+}
+
+/** v29: worksheets of an Excel 97-2003 workbook, [['name', 'grid'], ...]: all of them ($only = null) or the one numbered $only (0 = first). */
+function xls_read_book(string $path, ?int $only = null): array
 {
     $wb = ole_read_stream((string)file_get_contents($path), ['Workbook', 'Book']);
     if ($wb === null) {
@@ -53,7 +84,7 @@ function xls_read_grid(string $path, int $sheet = 0): array
         $data = substr($wb, $pos + 4, $size);
         $pos += 4 + $size;
         if ($type === 0x0085) {   // BOUNDSHEET: stream offset of the sheet, state, type, name
-            $sheets[] = ['offset' => unpack('V', substr($data, 0, 4))[1], 'kind' => ord($data[5] ?? "\0")];
+            $sheets[] = ['offset' => unpack('V', substr($data, 0, 4))[1], 'kind' => ord($data[5] ?? "\0"), 'name' => strlen($data) > 7 ? xls_read_string($data, 6, 1) : ''];
         } elseif ($type === 0x00FC) {   // SST (+ CONTINUE records)
             $parts = [$data];
             while ($pos + 4 <= $len) {
@@ -73,14 +104,24 @@ function xls_read_grid(string $path, int $sheet = 0): array
     if (!$sheets) {
         throw new RuntimeException('The Excel file has no worksheet.');
     }
-    $s = $sheets[min(max(0, $sheet), count($sheets) - 1)];
+    $pick = $only === null ? $sheets : [$sheets[min(max(0, $only), count($sheets) - 1)]];
+    $book = [];
+    foreach ($pick as $i => $s) {
+        $book[] = ['name' => $s['name'] !== '' ? $s['name'] : 'Sheet' . ($i + 1), 'grid' => xls_sheet_grid($wb, (int)$s['offset'], $sst)];
+    }
+    return $book;
+}
+
+/** v29: the cells of one BIFF8 worksheet starting at $pos of the workbook stream. */
+function xls_sheet_grid(string $wb, int $pos, array $sst): array
+{
+    $len = strlen($wb);
     $grid = [];
     $set = function (int $r, int $c, string $v) use (&$grid) {
         if ($v !== '') {
             $grid[$r][$c] = $v;
         }
     };
-    $pos = (int)$s['offset'];
     $pendingFormula = null;
     while ($pos + 4 <= $len) {
         $u = unpack('vtype/vsize', substr($wb, $pos, 4));
@@ -366,6 +407,15 @@ function ole_read_stream(string $bin, array $names): ?string
 /** Grid of one worksheet of an .xlsx workbook. */
 function xlsx_read_grid(string $path, int $sheet = 0): array
 {
+    return xlsx_read_book($path, $sheet)[0]['grid'];
+}
+
+/**
+ * v29: worksheets of an .xlsx workbook in the order of its tabs (xl/workbook.xml), [['name', 'grid'], ...]: all of them
+ * ($only = null) or the one numbered $only (0 = first). The shared strings are read once for every sheet.
+ */
+function xlsx_read_book(string $path, ?int $only = null): array
+{
     if (!class_exists('ZipArchive')) {
         throw new RuntimeException('The PHP zip extension is needed to read .xlsx files. Save the file as Excel 97-2003 (.xls) or CSV instead.');
     }
@@ -389,18 +439,62 @@ function xlsx_read_grid(string $path, int $sheet = 0): array
                 $strings[] = $t;
             }
         }
+        unset($ss, $x);
     }
-    $name = 'xl/worksheets/sheet' . ($sheet + 1) . '.xml';
-    $xml = $z->getFromName($name);
-    if ($xml === false) {
-        $xml = $z->getFromName('xl/worksheets/sheet1.xml');
+    // the worksheets in tab order: workbook.xml names them, its relationships give each one's part
+    $list = [];
+    $wbx = @simplexml_load_string((string)$z->getFromName('xl/workbook.xml'));
+    $rels = @simplexml_load_string((string)$z->getFromName('xl/_rels/workbook.xml.rels'));
+    if ($wbx && $rels && isset($wbx->sheets)) {
+        $target = [];
+        foreach ($rels->Relationship as $rel) {
+            $target[(string)$rel['Id']] = (string)$rel['Target'];
+        }
+        foreach ($wbx->sheets->sheet as $sh) {
+            $rid = (string)$sh->attributes('http://schemas.openxmlformats.org/officeDocument/2006/relationships')['id'];
+            $t = $target[$rid] ?? '';
+            if ($t === '' || stripos($t, 'worksheets/') === false) {
+                continue;   // a chart sheet or a dialog sheet
+            }
+            $list[] = ['name' => (string)$sh['name'], 'part' => $t[0] === '/' ? ltrim($t, '/') : 'xl/' . preg_replace('#^\./#', '', $t)];
+        }
+    }
+    if (!$list) {
+        for ($i = 1; $z->locateName('xl/worksheets/sheet' . $i . '.xml') !== false; $i++) {
+            $list[] = ['name' => 'Sheet' . $i, 'part' => 'xl/worksheets/sheet' . $i . '.xml'];
+        }
+    }
+    if (!$list) {
+        $z->close();
+        throw new RuntimeException('The .xlsx file has no worksheet.');
+    }
+    $pick = $only === null ? $list : [$list[min(max(0, $only), count($list) - 1)]];
+    $book = [];
+    foreach ($pick as $sh) {
+        $xml = $z->getFromName($sh['part']);
+        $x = $xml !== false ? @simplexml_load_string($xml) : null;
+        unset($xml);
+        if (!$x) {
+            if ($only !== null) {
+                $z->close();
+                throw new RuntimeException('The worksheet of the .xlsx file cannot be read.');
+            }
+            continue;
+        }
+        $book[] = ['name' => $sh['name'], 'grid' => xlsx_sheet_grid($x, $strings)];
+        unset($x);
     }
     $z->close();
-    $x = $xml !== false ? @simplexml_load_string($xml) : null;
-    if (!$x) {
-        throw new RuntimeException('The worksheet of the .xlsx file cannot be read.');
-    }
+    return $book;
+}
+
+/** v29: the cells of one parsed .xlsx worksheet. */
+function xlsx_sheet_grid(SimpleXMLElement $x, array $strings): array
+{
     $grid = [];
+    if (!isset($x->sheetData)) {
+        return $grid;
+    }
     foreach ($x->sheetData->row as $row) {
         foreach ($row->c as $c) {
             $ref = (string)$c['r'];

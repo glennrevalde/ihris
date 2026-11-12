@@ -309,7 +309,7 @@ function page_header(string $title, array $opt = []): void
 <meta name="theme-color" content="#0c1533">
 <title><?= h($title) ?> - <?= h($appName) ?></title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c1533'/%3E%3Ctext x='16' y='22' font-family='Segoe UI,Arial' font-size='15' font-weight='700' fill='white' text-anchor='middle'%3E<?= rawurlencode(app_mark()) ?>%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/css/app.css?v=34">
+<link rel="stylesheet" href="assets/css/app.css?v=35">
 </head>
 <body class="<?= $u ? 'has-sidebar' : 'guest' ?>" data-app-name="<?= h($appName) ?>">
 <?php if ($u): ?>
@@ -449,7 +449,7 @@ function print_header(string $title, bool $landscape = false, string $size = '')
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?></title>
-<link rel="stylesheet" href="assets/css/app.css?v=34">
+<link rel="stylesheet" href="assets/css/app.css?v=35">
 <?php if ($landscape): ?><style>@page { size: <?= $size === 'legal' ? 'legal ' : '' ?>landscape; }</style><?php endif; ?>
 </head>
 <body class="print-body">

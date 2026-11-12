@@ -15,7 +15,7 @@
  */
 require_once __DIR__ . '/engine/paytrans.php';
 
-const DB_VERSION = 21;
+const DB_VERSION = 22;
 
 function db_version(): int
 {
@@ -1274,10 +1274,37 @@ function migration_v21(): array
     ]];
 }
 
+/**
+ * v29 requests (database version 22):
+ *  - Re-open a closed period (Period Closing, Super Admin only): a closing keeps its record with the status
+ *    "reopened", who re-opened it, when and why; the status the period had before the closing locked it.
+ *  - The "ZKTeco attlog.xlsx" import configuration: the ZKTeco Attendance Record Report saved as .xls or .xlsx
+ *    ("Att. Time" period, one row of day numbers at the top, ID / Name / Dept. blocks, the times of a day run together),
+ *    read on every sheet of the workbook (Sheet 0): the logs are on the "Att.log report" sheet of the export, and a
+ *    workbook of copied reports holds one report per sheet.
+ */
+function migration_v22(): array
+{
+    return ['tables' => [], 'columns' => [
+        ['period_closings', 'status', "VARCHAR(12) NOT NULL DEFAULT 'closed' COMMENT 'closed | reopened'"],
+        ['period_closings', 'cutoff_status_before', "VARCHAR(12) NULL COMMENT 'Status of the period before the closing locked it'"],
+        ['period_closings', 'reopened_by', 'INT NULL'],
+        ['period_closings', 'reopened_at', 'DATETIME NULL'],
+        ['period_closings', 'reopen_reason', 'VARCHAR(255) NULL'],
+        ['period_closings', 'reopen_log', 'TEXT NULL'],
+    ], 'modify' => [], 'settings' => [], 'seeds' => [], 'data' => [
+        "INSERT INTO import_profiles (name, layout, delimiter, has_header, col_bio_id, datetime_format, notes, rp_id_label, rp_name_label, rp_period_label, rp_date_format,
+                                      rp_day_row, rp_time_row, rp_sheet, min_gap, is_default, sort_order)
+         SELECT 'ZKTeco attlog.xlsx', 'report', 'tab', 0, 1, 'Y-m-d H:i:s', 'ZKTeco Attendance Record Report (.xls or .xlsx): Att. Time period, one row of day numbers at the top, ID / Name / Dept. blocks, the times of each day run together; every sheet of the workbook is read',
+                'ID:', 'Name:', 'Att. Time', 'Y-m-d', 0, 1, 0, 5, 0, m.so
+         FROM (SELECT COALESCE(MAX(sort_order), 0) + 1 AS so, SUM(name = 'ZKTeco attlog.xlsx') AS n FROM import_profiles) m WHERE COALESCE(m.n, 0) = 0",
+    ]];
+}
+
 /** Every upgrade step in order: version => definitions. */
 function migrations_all(): array
 {
-    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21'];
+    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21', 22 => 'migration_v22'];
 }
 
 function mig_table_exists(string $t): bool
@@ -1448,7 +1475,8 @@ function db_upgrade_sql(int $version = DB_VERSION): string
         '18' => 'Employee Loan / Deduction Request and its approval',
         '19' => 'Attendance record report import (JJM Logs) and the minimum minutes between logs',
         '20' => 'NBJ Logs import configuration and the other biometric IDs of an employee',
-        '21' => 'flexible shifts: 4 logs, 2 logs with break minutes, 2 logs without a break'][(string)$version] ?? '';
+        '21' => 'flexible shifts: 4 logs, 2 logs with break minutes, 2 logs without a break',
+        '22' => 'Super Admin re-opening of closed periods, ZKTeco attlog.xlsx import configuration'][(string)$version] ?? '';
     $q = fn($v) => $v === null ? 'NULL' : "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], (string)$v) . "'";
     $out = [];
     $out[] = "-- =====================================================================";

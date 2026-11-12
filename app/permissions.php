@@ -151,7 +151,7 @@ function perm_defs(): array
         // Process & Registers
         'payroll_runs' => ['a' => 'view create edit delete generate approve', 'def' => 'payroll',
             'ops' => ['create' => 'create', 'compute' => 'generate', 'finalize' => 'approve', 'resolve' => 'approve', 'cancel' => 'delete', 'delete_run' => 'delete', 'add_adj' => 'edit', 'del_adj' => 'edit']],
-        'period_closing' => ['a' => 'view approve export print', 'def' => 'payroll', 'ops' => ['close' => 'approve']],
+        'period_closing' => ['a' => 'view approve export print', 'def' => 'payroll', 'ops' => ['close' => 'approve', 'reopen' => 'approve']],   // v29 re-open: Super Admin only (closing_can_reopen)
         'pay_register' => ['a' => 'view generate print export', 'def' => 'payroll', 'ops' => ['reprocess' => 'generate']],
         'pay_register2' => ['a' => 'view generate print export', 'def' => 'payroll', 'ops' => ['reprocess' => 'generate']],
         'pay_inquiry' => ['a' => 'view', 'def' => 'hr payroll'],

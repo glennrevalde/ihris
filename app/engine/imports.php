@@ -8,27 +8,38 @@
 /**
  * v24: the attendance report configuration a file is written in: the one whose Employee ID label is found in the
  * sheet (and whose period label too, when it has one). $chosen wins when it fits. Null when none fits.
+ * v29: each configuration is checked on the sheet it reads (Sheet 0 = every sheet of the file), so a ZKTeco export whose
+ * logs are on its third sheet goes to the configuration that reads every sheet, not to one that reads the first.
  */
 function import_report_profile_for(string $path, array $profiles, ?array $chosen = null): ?array
 {
     try {
-        $grid = grid_read_file($path);
+        $book = grid_read_sheets($path);
     } catch (Throwable $e) {
         return $chosen;
     }
     $norm = fn($v) => mb_strtolower(preg_replace('/\s+/u', '', (string)$v));
-    $cells = [];
-    foreach ($grid as $row) {
-        foreach ($row as $v) {
-            $cells[] = $norm($v);
+    $cellsOf = [];   // sheet number (0 = all) => normalized cells
+    $cells = function (int $sheet) use (&$cellsOf, $book, $norm): array {
+        if (!isset($cellsOf[$sheet])) {
+            $out = [];
+            foreach ($sheet === 0 ? $book : [$book[min($sheet, count($book)) - 1] ?? ['grid' => []]] as $sh) {
+                foreach ($sh['grid'] as $row) {
+                    foreach ($row as $v) {
+                        $out[] = $norm($v);
+                    }
+                }
+            }
+            $cellsOf[$sheet] = $out;
         }
-    }
+        return $cellsOf[$sheet];
+    };
     $score = function (array $p) use ($cells, $norm): int {
         $id = $norm(($p['rp_id_label'] ?? '') ?: 'User ID:');
         $per = $norm($p['rp_period_label'] ?? '');
         $hits = 0;
         $perHit = $per === '';
-        foreach ($cells as $c) {
+        foreach ($cells(max(0, (int)($p['rp_sheet'] ?? 1))) as $c) {
             if ($c === $id || ($id !== '' && strpos($c, $id) === 0 && !ctype_alpha(substr($c, strlen($id), 1)))) {
                 $hits++;
             }
@@ -914,7 +925,75 @@ function import_min_gap(array $rows, int $minutes, int $limit = 0): array
  */
 function parse_report_file(string $path, array $profile, ?array $range = null, int &$outside = 0): array
 {
-    $grid = grid_read_file($path, max(0, (int)($profile['rp_sheet'] ?? 1) - 1));
+    $norm = fn($v) => mb_strtolower(preg_replace('/\s+/u', '', (string)$v));
+    $idL = $norm(($profile['rp_id_label'] ?? '') ?: 'User ID:');
+    // v29 Sheet 0 = every worksheet holding the report (ZKTeco attlog: the logs are on the "Att.log report" sheet, after
+    // the schedule and the statistics; a workbook of copied reports has one report per site and cut-off on each sheet)
+    $all = (int)($profile['rp_sheet'] ?? 1) === 0;
+    if ($all) {
+        import_memory_at_least(512);   // a workbook of 190 reports holds over 100,000 logs
+    }
+    $sheets = $all ? grid_read_sheets($path) : [['name' => '', 'grid' => grid_read_file($path, max(0, (int)($profile['rp_sheet'] ?? 1) - 1))]];
+    $out = [];
+    $seen = [];
+    $outsideKeys = [];
+    $found = false;
+    foreach ($sheets as $sh) {
+        if ($all && !import_grid_has_label($sh['grid'], $idL)) {
+            continue;
+        }
+        $found = true;
+        foreach (parse_report_grid($sh['grid'], $profile, $range, $outsideKeys, $all && count($sheets) > 1 ? (string)$sh['name'] : '') as $r) {
+            // the same punch on two sheets (reports of overlapping cut-offs copied into one workbook) is read once
+            $k = $r['bio_id'] . '|' . $r['log_time'];
+            if (isset($seen[$k])) {
+                continue;
+            }
+            $seen[$k] = true;
+            $out[] = $r;
+        }
+    }
+    if (!$found) {
+        throw new RuntimeException('No "' . (($profile['rp_id_label'] ?? '') ?: 'User ID:') . '" label was found in any sheet of the file: check the Employee ID label of the import configuration, or choose another configuration.');
+    }
+    $outside += count($outsideKeys);
+    return $out;
+}
+
+/** v29: raise the PHP memory limit of this request to at least $mb megabytes (never lowers it; -1 = no limit). */
+function import_memory_at_least(int $mb): void
+{
+    $cur = trim((string)ini_get('memory_limit'));
+    if ($cur === '' || $cur === '-1') {
+        return;
+    }
+    $n = (float)$cur;
+    $u = strtolower(substr($cur, -1));
+    $bytes = $u === 'g' ? $n * 1073741824 : ($u === 'm' ? $n * 1048576 : ($u === 'k' ? $n * 1024 : $n));
+    if ($bytes < $mb * 1048576) {
+        @ini_set('memory_limit', $mb . 'M');
+    }
+}
+
+/** v29: does a sheet hold a cell starting with the (normalized) label? */
+function import_grid_has_label(array $grid, string $normLabel): bool
+{
+    foreach ($grid as $row) {
+        foreach ($row as $v) {
+            if (strpos(mb_strtolower(preg_replace('/\s+/u', '', (string)$v)), $normLabel) === 0) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/**
+ * The logs of one sheet of an attendance record report (see parse_report_file()). $outsideKeys collects the punches
+ * outside the dates of the upload; $sheetName (several sheets read) goes into the log details.
+ */
+function parse_report_grid(array $grid, array $profile, ?array $range, array &$outsideKeys, string $sheetName = ''): array
+{
     $norm = fn($v) => mb_strtolower(preg_replace('/\s+/u', '', (string)$v));
     $idL = $norm(($profile['rp_id_label'] ?? '') ?: 'User ID:');
     $nameL = $norm($profile['rp_name_label'] ?? '');
@@ -1029,19 +1108,47 @@ function parse_report_file(string $path, array $profile, ?array $range = null, i
         $dayRow = $grid[$dayRowNo] ?? [];
         ksort($dayRow);
         // day number -> date, column by column through the period (a period over two months goes on to the 1st)
+        // v29: the first day number is placed in the period, else on the last date before it with that number (a report
+        // labelled 2026-01-01 ~ 01-14 whose columns start at 29, 30, 31 of December), and the next columns follow it,
+        // past the end of the period too (a sheet whose day row runs on after the label's last date)
         $colDate = [];
-        $ptr = 0;
+        $cur = null;
         foreach ($dayRow as $c => $v) {
             if (!$isDay($v)) {
                 continue;
             }
             $d = (int)$v;
-            while ($ptr < count($dates) && (int)substr($dates[$ptr], 8, 2) !== $d) {
-                $ptr++;
+            if ($cur === null) {
+                $pick = null;
+                foreach ($dates as $dt) {
+                    if ((int)substr($dt, 8, 2) === $d) {
+                        $pick = $dt;
+                        break;
+                    }
+                }
+                for ($k = 1; !$pick && $k <= 31; $k++) {
+                    $dt = add_days($start, -$k);
+                    if ((int)substr($dt, 8, 2) === $d) {
+                        $pick = $dt;
+                    }
+                }
+                if (!$pick) {
+                    continue;
+                }
+            } else {
+                $pick = null;
+                for ($k = 1; $k <= 31; $k++) {
+                    $dt = add_days($cur, $k);
+                    if ((int)substr($dt, 8, 2) === $d) {
+                        $pick = $dt;
+                        break;
+                    }
+                }
+                if (!$pick) {
+                    continue;
+                }
             }
-            if ($ptr < count($dates)) {
-                $colDate[$c] = $dates[$ptr++];
-            }
+            $colDate[$c] = $cur = $pick;
         }
         $punches = [];
         for ($rn = max($dayRowNo + 1, $b['row'] + $timeOff); $rn < $next; $rn++) {
@@ -1081,12 +1188,14 @@ function parse_report_file(string $path, array $profile, ?array $range = null, i
                     continue;
                 }
                 $seen[$time] = true;
+                $bioId = ltrim($b['id'], '0') ?: $b['id'];
                 if ($range && ($date < $range[0] || $date > $range[1])) {
-                    $outside++;
+                    $outsideKeys[$bioId . '|' . $date . ' ' . $time] = true;
                     continue;
                 }
-                $rowsOut[] = ['line_no' => $line, 'bio_id' => ltrim($b['id'], '0') ?: $b['id'], 'log_time' => $date . ' ' . $time, 'punch_type' => 'unknown',
-                    'device_id' => null, 'raw_text' => trim('ID ' . $b['id'] . ($b['name'] !== '' ? ' ' . $b['name'] : '') . ', ' . $date . ' ' . substr($time, 0, 5) . ' (cell ' . import_col_letter($col) . $line . ')'),
+                $rowsOut[] = ['line_no' => $line, 'bio_id' => $bioId, 'log_time' => $date . ' ' . $time, 'punch_type' => 'unknown',
+                    'device_id' => null, 'raw_text' => trim('ID ' . $b['id'] . ($b['name'] !== '' ? ' ' . $b['name'] : '') . ', ' . $date . ' ' . substr($time, 0, 5)
+                        . ' (' . ($sheetName !== '' ? 'sheet ' . $sheetName . ', ' : '') . 'cell ' . import_col_letter($col) . $line . ')'),
                     'error' => $b['id'] === '' ? 'Missing employee ID next to the ID label' : null];
             }
         }

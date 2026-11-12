@@ -5,6 +5,8 @@
  * Closing posts the salaries, payments, leaves, government deductions, taxes and employee ledgers of
  * the finalized payroll (app/engine/closing.php). Routes: period_closing (the form), closing_print
  * (printed closing report), closing_backup (database backup download).
+ * v29: the Super Admin (and only the Super Admin) can re-open a closed period from the Closed periods list:
+ * closing_reopen() reverses the postings, unlocks the period and keeps the closing marked re-opened.
  */
 $route = (string)get('p');
 if ($route === 'closing_backup') {
@@ -26,6 +28,9 @@ if ($route === 'closing_print') {
       <tr><th>Closing no.</th><td><?= h($pc['closing_no']) ?></td><th>Pay code</th><td><?= h($pc['pay_group_code'] . ' — ' . $pc['pay_group_name']) ?></td></tr>
       <tr><th>Period closed</th><td><?= h(fmt_date($pc['period_start'])) ?> – <?= h(fmt_date($pc['period_end'])) ?></td><th>Closed</th><td><?= h(fmt_dt($pc['closed_at'])) ?>, <?= h($pc['closed_name'] ?? '') ?></td></tr>
       <tr><th>Company / branch</th><td><?= h($pc['branch_name'] ?? 'All') ?></td><th>Group / type</th><td><?= h(($pc['group_name'] ?? 'All groups') . ', ' . ($pc['type_name'] ?? 'all types')) ?></td></tr>
+      <?php if (($pc['status'] ?? 'closed') === 'reopened'): ?>
+      <tr><th>Re-opened</th><td><?= h(fmt_dt($pc['reopened_at'])) ?>, <?= h((string)val('SELECT full_name FROM users WHERE id = ?', [(int)$pc['reopened_by']])) ?></td><th>Reason</th><td><?= h((string)$pc['reopen_reason']) ?></td></tr>
+      <?php endif; ?>
     </tbody></table>
     <table class="doc-table">
       <thead><tr><th>Payroll run</th><th>Type</th><th>Period</th><th>Pay date</th><th class="num">Employees</th><th class="num">Gross</th><th class="num">Net</th></tr></thead>
@@ -40,6 +45,10 @@ if ($route === 'closing_print') {
     </tbody><tfoot><tr><td>Gross <?= money($pc['gross']) ?>, deductions <?= money($pc['deductions']) ?></td><td colspan="2">Employees <?= (int)$pc['employees'] ?></td><td class="num">Net <?= money($pc['net']) ?></td></tr></tfoot></table>
     <h3>Status</h3>
     <ol class="closing-log"><?php foreach (explode("\n", (string)$pc['log']) as $ln): if (trim($ln) === '') continue; ?><li><?= h($ln) ?></li><?php endforeach; ?></ol>
+    <?php if (($pc['status'] ?? 'closed') === 'reopened'): ?>
+    <h3>Re-opening</h3>
+    <ol class="closing-log"><?php foreach (explode("\n", (string)$pc['reopen_log']) as $ln): if (trim($ln) === '') continue; ?><li><?= h($ln) ?></li><?php endforeach; ?></ol>
+    <?php endif; ?>
     <?= signatory_block() ?>
     <?php print_footer();
     return;
@@ -61,6 +70,24 @@ if (!$cutId || !isset($periods[$cutId])) {
 $cut = $cutId ? pt_period($cutId) : null;
 $keep = array_filter(['pay_group_id' => $pgId, 'cutoff_id' => $cutId] + $f);
 
+if (is_post() && post('_action') === 'reopen') {
+    // v29: only the Super Admin re-opens a closed period
+    $rid = (int)post('closing_id');
+    try {
+        if (!closing_can_reopen()) {
+            throw new RuntimeException('Only the Super Admin can re-open a closed period.');
+        }
+        $log = closing_reopen($rid, (string)post('reason'), post('backup_done') === '1', post('to_computed') === '1');
+        $no = (string)val('SELECT closing_no FROM period_closings WHERE id = ?', [$rid]);
+        flash('success', 'Period re-opened (' . $no . '): ' . implode('; ', array_slice($log, 0, 2)) . '.');
+        $rc = row('SELECT pay_group_id, cutoff_id FROM period_closings WHERE id = ?', [$rid]);
+        redirect('period_closing', array_filter(['pay_group_id' => (int)($rc['pay_group_id'] ?? 0), 'cutoff_id' => (int)($rc['cutoff_id'] ?? 0), 'reopened' => $rid]));
+    } catch (RuntimeException $e) {
+        flash('error', $e->getMessage());
+        redirect('period_closing', $keep);
+    }
+}
+
 if (is_post()) {
     try {
         $id = closing_execute((int)post('cutoff_id'), ['branch_id' => (int)post('branch_id') ?: null, 'employee_group_id' => (int)post('employee_group_id') ?: null,
@@ -76,8 +103,11 @@ if (is_post()) {
 
 $pv = $cut ? closing_preview($cut, $f) : null;
 $done = (int)get('done', 0) ? row('SELECT * FROM period_closings WHERE id = ?', [(int)get('done')]) : null;
-$history = rows('SELECT pc.*, pg.code AS pay_group_code, u.full_name AS closed_name, b.code AS branch_code FROM period_closings pc JOIN pay_groups pg ON pg.id = pc.pay_group_id
-                 LEFT JOIN users u ON u.id = pc.closed_by LEFT JOIN branches b ON b.id = pc.branch_id ORDER BY pc.id DESC LIMIT 20');
+$canReopen = closing_can_reopen();
+$reopened = closing_reopen_ready() && (int)get('reopened', 0) ? row('SELECT * FROM period_closings WHERE id = ?', [(int)get('reopened')]) : null;
+$history = rows('SELECT pc.*, pg.code AS pay_group_code, u.full_name AS closed_name, b.code AS branch_code' . (closing_reopen_ready() ? ', ru.full_name AS reopened_name' : '') . '
+                 FROM period_closings pc JOIN pay_groups pg ON pg.id = pc.pay_group_id
+                 LEFT JOIN users u ON u.id = pc.closed_by LEFT JOIN branches b ON b.id = pc.branch_id' . (closing_reopen_ready() ? ' LEFT JOIN users ru ON ru.id = pc.reopened_by' : '') . ' ORDER BY pc.id DESC LIMIT 20');
 $canClose = $pv && !$pv['blocking'] && $pv['items'] && can('period_closing.approve');
 
 page_header('Period Closing / Payroll Closing', [
@@ -88,7 +118,7 @@ page_header('Period Closing / Payroll Closing', [
 <div class="closing-layout">
   <div class="card closing-card">
     <div class="closing-warn"><strong>Warning:</strong> BACKUP MUST BE DONE BEFORE THIS JOB. PLEASE CHECK WITH MIS.
-      <span>Closing cannot be undone: it posts to the employee ledgers and locks the period.</span></div>
+      <span>Closing posts to the employee ledgers and locks the period. Only the Super Admin can re-open a closed period.</span></div>
     <form method="get" class="closing-params">
       <input type="hidden" name="p" value="period_closing">
       <div class="form-grid">
@@ -103,7 +133,10 @@ page_header('Period Closing / Payroll Closing', [
 
     <fieldset class="closing-status">
       <legend>Status</legend>
-      <?php if ($done): ?>
+      <?php if ($reopened && ($reopened['status'] ?? '') === 'reopened'): ?>
+        <p class="closing-reopened"><strong><?= h($reopened['closing_no']) ?> re-opened</strong> <?= h(fmt_dt($reopened['reopened_at'])) ?>. Reason: <?= h((string)$reopened['reopen_reason']) ?></p>
+        <ol class="closing-log"><?php foreach (explode("\n", (string)$reopened['reopen_log']) as $ln): if (trim($ln) === '') continue; ?><li><?= h($ln) ?></li><?php endforeach; ?></ol>
+      <?php elseif ($done): ?>
         <ol class="closing-log"><?php foreach (explode("\n", (string)$done['log']) as $ln): if (trim($ln) === '') continue; ?><li><?= h($ln) ?></li><?php endforeach; ?></ol>
         <p class="small"><a href="<?= h(url('closing_print', ['id' => $done['id']])) ?>" target="_blank">Print the closing report <?= h($done['closing_no']) ?></a></p>
       <?php elseif (!$cut): ?>
@@ -135,28 +168,71 @@ page_header('Period Closing / Payroll Closing', [
       <label class="check"><input type="checkbox" name="backup_done" value="1" required<?= $canClose ? '' : ' disabled' ?>> A backup of the database was made</label>
       <span class="spacer"></span>
       <a class="btn" href="<?= url('dashboard') ?>">Exit</a>
-      <button class="btn btn-primary" data-confirm="Close this period? Postings to the employee ledgers cannot be undone."<?= $canClose ? '' : ' disabled' ?>>Close</button>
+      <button class="btn btn-primary" data-confirm="Close this period? It posts to the employee ledgers and locks the period; only the Super Admin can re-open it."<?= $canClose ? '' : ' disabled' ?>>Close</button>
     </form>
   </div>
 
   <div class="card flush">
-    <div class="card-head pad"><div><h2>Closed periods</h2><div class="sub">The last 20 closings</div></div></div>
+    <div class="card-head pad"><div><h2>Closed periods</h2><div class="sub">The last 20 closings<?= $canReopen ? '. As Super Admin you can re-open the latest closing of a pay code.' : '' ?></div></div></div>
     <div class="table-wrap">
-      <table class="table table-compact">
-        <thead><tr><th>Closing</th><th>Pay code</th><th>Period</th><th>Selection</th><th class="num">Employees</th><th class="num">Net</th><th>Closed</th><th class="actions"></th></tr></thead>
+      <table class="table table-compact closing-history">
+        <thead><tr><th>Closing</th><th class="num">Employees / net</th><th class="actions"></th></tr></thead>
         <tbody>
-        <?php foreach ($history as $hc): ?>
-          <tr><td class="nowrap"><strong><?= h($hc['closing_no']) ?></strong><br><small class="muted"><?= $hc['period_locked'] ? 'Period locked' : 'Partial' ?></small></td><td><?= h($hc['pay_group_code']) ?></td>
-            <td class="nowrap small"><?= h(fmt_date($hc['period_start'], 'M d')) ?> – <?= h(fmt_date($hc['period_end'], 'M d, Y')) ?></td>
-            <td class="small"><?= h($hc['branch_code'] ?: 'All') ?><?= $hc['employee_group_id'] ? ', group' : '' ?><?= $hc['employee_type_id'] ? ', type' : '' ?></td>
-            <td class="num"><?= (int)$hc['employees'] ?></td><td class="num"><?= money($hc['net']) ?></td>
-            <td class="small nowrap"><?= h(fmt_dt($hc['closed_at'])) ?><br><span class="muted"><?= h($hc['closed_name'] ?? '') ?></span></td>
-            <td class="actions"><a class="btn btn-xs" target="_blank" href="<?= h(url('closing_print', ['id' => $hc['id']])) ?>">Print</a></td></tr>
+        <?php $modals = [];
+        foreach ($history as $hc):
+            $isRe = ($hc['status'] ?? 'closed') === 'reopened';
+            $block = $canReopen && !$isRe ? closing_reopen_block($hc) : 'no';
+            if ($canReopen && $block === null) {
+                $modals[] = $hc;
+            } ?>
+          <tr class="<?= $isRe ? 'row-muted' : '' ?>">
+            <td>
+              <div class="ch-head"><strong><?= h($hc['closing_no']) ?></strong> <small class="<?= $isRe ? 'closing-st-re' : 'muted' ?>"><?= $isRe ? 'Re-opened' : ($hc['period_locked'] ? 'Period locked' : 'Partial') ?></small></div>
+              <div class="small"><?= h($hc['pay_group_code']) ?>, <?= h(fmt_date($hc['period_start'], 'M d')) ?> – <?= h(fmt_date($hc['period_end'], 'M d, Y')) ?>,
+                <?= h($hc['branch_code'] ?: 'all companies') ?><?= $hc['employee_group_id'] ? ', one group' : '' ?><?= $hc['employee_type_id'] ? ', one type' : '' ?></div>
+              <div class="small muted">Closed <?= h(fmt_dt($hc['closed_at'])) ?><?= !empty($hc['closed_name']) ? ' by ' . h($hc['closed_name']) : '' ?></div>
+              <?php if ($isRe): ?><div class="small closing-st-re">Re-opened <?= h(fmt_dt($hc['reopened_at'])) ?><?= !empty($hc['reopened_name']) ? ' by ' . h($hc['reopened_name']) : '' ?></div>
+                <?php if (!empty($hc['reopen_reason'])): ?><div class="small muted">Reason: <?= h($hc['reopen_reason']) ?></div><?php endif; ?><?php endif; ?>
+            </td>
+            <td class="num"><?= (int)$hc['employees'] ?><br><small><?= money($hc['net']) ?></small></td>
+            <td class="actions"><div class="closing-row-acts">
+              <a class="btn btn-xs" target="_blank" href="<?= h(url('closing_print', ['id' => $hc['id']])) ?>">Print</a>
+              <?php if ($canReopen && $block === null): ?>
+                <button type="button" class="btn btn-xs btn-danger-outline" data-modal-open="reopen<?= (int)$hc['id'] ?>">Re-open</button>
+              <?php elseif ($canReopen && !$isRe && $block !== 'no'): ?>
+                <button type="button" class="btn btn-xs" disabled title="<?= h($block) ?>">Re-open</button>
+              <?php endif; ?>
+            </div></td></tr>
         <?php endforeach; ?>
-        <?= $history ? '' : empty_row(8, 'No period closed yet.') ?>
+        <?= $history ? '' : empty_row(3, 'No period closed yet.') ?>
         </tbody>
       </table>
     </div>
   </div>
 </div>
+
+<?php foreach ($modals as $hc): ?>
+<div class="modal" id="reopen<?= (int)$hc['id'] ?>"><div class="modal-box">
+  <h2>Re-open <?= h($hc['closing_no']) ?></h2>
+  <dl class="closing-reopen-facts">
+    <div><dt>Pay code</dt><dd><?= h($hc['pay_group_code']) ?></dd></div>
+    <div><dt>Period</dt><dd><?= h(fmt_date($hc['period_start'], 'M d')) ?> – <?= h(fmt_date($hc['period_end'], 'M d, Y')) ?></dd></div>
+    <div><dt>Employees</dt><dd><?= (int)$hc['employees'] ?></dd></div>
+    <div><dt>Net pay posted</dt><dd><?= money($hc['net']) ?></dd></div>
+  </dl>
+  <p class="small">Every posting of this closing is reversed: the ledger entries of its payroll (loan and advance payments, 13th month paid and accrued) are removed and the ledgers recomputed; the one-time deductions, transactions, queued earnings and installments it took are pending again; the offset leave it credited is taken back; the period is unlocked and appears again in Period to Close.</p>
+  <form method="post">
+    <?= csrf_field() ?><input type="hidden" name="_action" value="reopen"><input type="hidden" name="closing_id" value="<?= (int)$hc['id'] ?>">
+    <?php foreach ($keep as $k => $kv): ?><input type="hidden" name="<?= h($k) ?>" value="<?= h((string)$kv) ?>"><?php endforeach; ?>
+    <div class="field"><label for="rr<?= (int)$hc['id'] ?>">Reason for re-opening</label>
+      <textarea id="rr<?= (int)$hc['id'] ?>" name="reason" rows="3" minlength="5" maxlength="255" required placeholder="e.g. Wrong overtime of the Cebu branch, payroll to be recomputed"></textarea></div>
+    <label class="check"><input type="checkbox" name="to_computed" value="1"> Return the payroll run(s) to Computed, to correct and recompute them</label>
+    <label class="check"><input type="checkbox" name="backup_done" value="1" required> A backup of the database was made</label>
+    <div class="form-actions">
+      <button class="btn btn-danger" data-confirm="Re-open <?= h($hc['closing_no']) ?>? Its postings are reversed and the period is unlocked.">Re-open period</button>
+      <button type="button" class="btn" data-modal-close>Cancel</button>
+    </div>
+  </form>
+</div></div>
+<?php endforeach; ?>
 <?php page_footer();

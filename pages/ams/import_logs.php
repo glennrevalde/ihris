@@ -201,7 +201,7 @@ if (is_post()) {
                     // v22: an Excel report (JJM Logs) is read only with a report configuration, and a report configuration only reads reports
                     $isReport = ($f['profile']['layout'] ?? '') === 'report';
                     if (in_array($ext, ['xls', 'xlsx'], true) && !$isReport) {
-                        throw new RuntimeException($f['name'] . ' is an Excel file: choose a configuration of the layout "Attendance record report", such as JJM Logs or NBJ Logs.');
+                        throw new RuntimeException($f['name'] . ' is an Excel file: choose a configuration of the layout "Attendance record report", such as JJM Logs, NBJ Logs or ZKTeco attlog.xlsx.');
                     }
                     // v24: an Excel report is read with the report configuration whose labels it carries (JJM Logs: "User ID:",
                     // NBJ Logs: "ID:" and one row of day numbers at the top), whichever of them was chosen for the file
@@ -438,7 +438,7 @@ page_header('Customized Import Attendance Log', [
 <div class="grid grid-3">
   <div class="card stage-card">
     <h2>From file</h2>
-    <p class="muted small">TAB / CSV / fixed-width .dat, .txt or .log exported by the terminals, or an Excel attendance report (.xls, e.g. JJM Logs or NBJ Logs). Choose one, two, three or more files at once, e.g. the logs of the devices of Company A, B and C.</p>
+    <p class="muted small">TAB / CSV / fixed-width .dat, .txt or .log exported by the terminals, or an Excel attendance report (.xls / .xlsx, e.g. JJM Logs, NBJ Logs or ZKTeco attlog.xlsx). Choose one, two, three or more files at once, e.g. the logs of the devices of Company A, B and C.</p>
     <form method="post" enctype="multipart/form-data" id="stageForm">
       <?= csrf_field() ?><input type="hidden" name="_action" value="file">
       <div class="field"><label>Import configuration</label><select name="profile_id" required>
