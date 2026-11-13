@@ -551,9 +551,43 @@ function pt_save(int $cutoffId, int $empId, array $values, ?string $remarks = nu
         }
         return (int)$old['id'];
     }
-    $id = insert('attendance_summaries', array_merge(['cutoff_id' => $cutoffId, 'employee_id' => $empId], $data));
+    $id = insert('attendance_summaries', array_merge(['cutoff_id' => $cutoffId, 'employee_id' => $empId], $data + pt_hol_flag()));
     audit('payroll', 'transaction_create', 'attendance_summaries', $id, array_filter($values));
     return $id;
+}
+
+/**
+ * v31: the marker of a transaction made with the holiday rule of version 31 (database version 24): for a daily-rated
+ * employee, the hours worked on a regular or special holiday are part of the Hours work (paid 100% in the basic pay)
+ * and the holiday columns are paid for the premium only (130% - 100% = 30%, 200% - 100% = 100%), as for the
+ * monthly-rated. Transactions saved before keep their rule (hours work without the holidays, holiday hours paid in full).
+ */
+function pt_hol_flag(): array
+{
+    static $ok = [];
+    $db = active_db_name();
+    $ok[$db] ??= mig_column_exists('attendance_summaries', 'hol_in_basic');
+    return $ok[$db] ? ['hol_in_basic' => 1] : [];
+}
+
+/** v31: the note of the transaction entry forms on how the holidays of a daily-rated employee are counted ('' for the monthly-rated). */
+function pt_hol_rule_note(?array $t, array $emp): string
+{
+    if (($emp['rate_type'] ?? 'monthly') === 'monthly' || !mig_column_exists('attendance_summaries', 'hol_in_basic')) {
+        return '';
+    }
+    $holHrs = (float)($t['lh_hrs'] ?? 0) + (float)($t['sh_hrs'] ?? 0);
+    if ($t && !empty($t['id']) && (int)($t['hol_in_basic'] ?? 0) === 0 && $holHrs > 0) {
+        return '<div class="callout warn" style="margin-top:12px">Made with the former holiday rule: the Hours work does not include the '
+            . h(number_format($holHrs, 2)) . ' hrs worked on holidays, which are paid in full on the holiday lines. Process the attendance again (Auto-Generate) to count them in the basic pay with the premium only.</div>';
+    }
+    return '<div class="callout" style="margin-top:12px">Daily-rated: the Hours work includes the hours worked on regular and special holidays (paid 100% in the basic pay); the holiday columns pay the premium only (special 30%, regular 100%).</div>';
+}
+
+/** v31: does this transaction (attendance_summaries row) of a daily-rated employee hold the holiday hours in its Hours work? */
+function pt_hol_in_basic(?array $t, array $emp): bool
+{
+    return $t !== null && ($emp['rate_type'] ?? 'monthly') !== 'monthly' && (int)($t['hol_in_basic'] ?? 0) === 1;
 }
 
 function pt_delete(int $cutoffId, int $empId): bool

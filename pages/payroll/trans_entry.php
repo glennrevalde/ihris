@@ -172,6 +172,7 @@ if (!$period) {
           </div>
         </div>
         <?= pt_rate_chips($emp) ?>
+        <?= pt_hol_rule_note($exists ? $t : null, $emp) ?>
         <?php if (!$editable): ?>
           <div class="callout warn" style="margin-top:12px"><?= h(pt_locked_reason($period, $tRow, $side)) ?>
             <?php if (!pt_period_editable($period, $side)): ?> <a href="<?= h(url('periods', ['pay_group_id' => $period['pay_group_id']])) ?>">Period Parameters</a><?php endif; ?></div>

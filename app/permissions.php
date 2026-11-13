@@ -134,7 +134,8 @@ function perm_defs(): array
         'pay_trans2' => ['a' => 'view edit delete generate import', 'def' => 'hr payroll', 'ops' => ['save' => 'edit', 'recalc' => 'generate', 'process' => 'generate']],
         'pay_batch' => ['a' => 'view edit import', 'def' => 'hr payroll', 'ops' => ['' => 'edit', 'reset_source' => 'edit', 'set_source' => 'edit']],
         'emp_transactions' => ['a' => 'view create edit delete import', 'def' => 'payroll',
-            'ops' => ['cancel' => 'delete', 'term_cancel' => 'delete', 'term_save' => 'edit', 'amort' => 'edit', 'pay' => 'edit', 'reactivate' => 'edit', 'remarks' => 'edit']],
+            'ops' => ['cancel' => 'delete', 'term_cancel' => 'delete', 'term_save' => 'edit', 'amort' => 'edit', 'pay' => 'edit', 'reactivate' => 'edit', 'remarks' => 'edit',
+                'term_hold' => 'edit', 'term_resume' => 'edit', 'hold' => 'edit', 'resume' => 'edit']],   // v31 Hold / Resume
         'fixed_trans' => ['a' => 'view create edit delete import', 'def' => 'payroll', 'ops' => ['stop' => 'edit', 'start' => 'edit']],
         'trans_payments' => ['a' => 'view create delete import', 'def' => 'payroll', 'ops' => ['pay' => 'create', 'void' => 'delete']],
         // v16: a tab of Employee Term Loan/Payables (no menu item of its own)

@@ -196,6 +196,7 @@ $cols = ['hours_work' => 'Work', 'absent_hrs' => 'Absent', 'late_hrs' => 'Late',
       <div style="text-align:right"><div class="muted small">Total hours encoded</div><div style="font-size:1.4rem;font-weight:750" id="totalHours2">0.00</div></div>
     </div>
     <?= pt_rate_chips($emp) ?>
+    <?= pt_hol_rule_note($trans[$empId] ?? null, $emp) ?>
     <?php if (!$rowEditable): ?><div class="callout warn" style="margin-top:12px"><?= h(pt_locked_reason($period, $trans[$empId] ?? null, $side)) ?></div><?php endif; ?>
     <div style="margin-top:14px"><?= pt_form_body($t, !$rowEditable, $emp, $period ? pt_perfect_hours($period, $emp) : null) ?></div>
     <fieldset class="box"><legend>Remarks</legend>

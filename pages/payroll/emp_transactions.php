@@ -164,6 +164,14 @@ if (is_post()) {
         } elseif ($action === 'term_cancel') {
             term_cancel((int)post('id'), trim((string)post('reason')) ?: null);
             flash('success', 'Transaction with terms cancelled. Installments already taken stay in the history.');
+        } elseif ($action === 'term_hold' || $action === 'term_resume') {
+            // v31: Hold stops the transaction for a while (left out of the payroll), Resume takes it again
+            $runs = $action === 'term_hold' ? term_hold((int)post('id'), trim((string)post('reason')) ?: null) : term_resume((int)post('id'));
+            flash('success', $action === 'term_hold' ? 'Transaction with terms on hold: it is left out of the payroll until you press Resume. Its pending installments wait.'
+                : 'Transaction with terms resumed: the payroll takes its installments again from the next payroll computed.');
+            if ($runs) {
+                flash('info', 'Process payroll run ' . implode(', ', $runs) . ' again so its figures follow this change.');
+            }
         } elseif ($action === 'delete' || $action === 'cancel') {
             $id = (int)post('id');
             $t = row('SELECT * FROM employee_transactions WHERE id = ?', [$id]);
@@ -244,7 +252,9 @@ foreach ($list as $t) {
 // transactions with terms (not tied to one period)
 $twhere = ['1=1'];
 $tparams = [];
-if ($tstatusF !== '' && $tstatusF !== 'all') {
+if ($tstatusF === 'active') {
+    $twhere[] = "tt.status IN ('active','hold')";   // v31: the running ones, those on hold included
+} elseif ($tstatusF !== '' && $tstatusF !== 'all') {
     $twhere[] = 'tt.status = ?';
     $tparams[] = $tstatusF;
 }
@@ -300,7 +310,7 @@ echo dimp_panel($dimp);
   <label>Period<select name="cutoff_id" data-autosubmit><?= options(pt_period_options(), $period['id'] ?? null, 'All periods') ?></select></label>
   <label>Type<select name="trans_type" data-autosubmit><?= options(['earning' => 'Earnings', 'deduction' => 'Deductions'], $typeF, 'All') ?></select></label>
   <label>Status (one-time)<select name="status" data-autosubmit><?= options(['pending' => 'Pending', 'included' => 'Included in payroll', 'cancelled' => 'Cancelled'], $statusF, 'All') ?></select></label>
-  <label>Status (with terms)<select name="tstatus" data-autosubmit><?= options(['active' => 'Active', 'completed' => 'Completed', 'cancelled' => 'Cancelled', 'all' => 'All'], $tstatusF) ?></select></label>
+  <label>Status (with terms)<select name="tstatus" data-autosubmit><?= options(['active' => 'Active (incl. on hold)', 'hold' => 'On hold', 'completed' => 'Completed', 'cancelled' => 'Cancelled', 'all' => 'All'], $tstatusF) ?></select></label>
   <?= multi_pick('branch_id', 'Co. / Branch', $branchOpts, $filters['branch_id'], 'All companies') ?>
   <?= multi_pick('org_unit_id', 'Department', pairs('SELECT id, name FROM org_units WHERE is_active = 1 ORDER BY name'), $filters['org_unit_id'], 'All departments') ?>
   <?= multi_pick('employee_group_id', 'Employee group', emp_group_options(), $filters['employee_group_id'], 'All groups') ?>
@@ -323,9 +333,10 @@ echo dimp_panel($dimp);
             echo empty_row(13, 'No transaction with terms for these filters. Set Terms above 1 in the form to create one.');
         }
         foreach ($termList as $tt): ?>
-          <tr class="<?= $tt['status'] === 'cancelled' ? 'row-muted' : '' ?>">
-            <td class="small"><?= h(['active' => 'A', 'completed' => 'C', 'cancelled' => 'X'][$tt['status']] ?? '') ?></td>
-            <td><strong><?= h(full_name($tt)) ?></strong><br><small class="muted"><?= h($tt['employee_no']) ?></small></td>
+          <tr class="<?= $tt['status'] === 'cancelled' ? 'row-muted' : ($tt['status'] === 'hold' ? 'row-hold' : '') ?>">
+            <td class="small"><abbr title="<?= h(TERM_TRANS_STATUS[$tt['status']] ?? $tt['status']) ?>"><?= h(['active' => 'A', 'hold' => 'H', 'completed' => 'C', 'cancelled' => 'X'][$tt['status']] ?? '') ?></abbr></td>
+            <td><strong><?= h(full_name($tt)) ?></strong><br><small class="muted"><?= h($tt['employee_no']) ?></small>
+              <?php if ($tt['status'] === 'hold'): ?><br><small class="et-held">On hold<?= !empty($tt['held_at']) ? ' since ' . h(fmt_date(substr((string)$tt['held_at'], 0, 10), 'M d')) : '' ?><?= !empty($tt['hold_reason']) ? ': ' . h($tt['hold_reason']) : '' ?></small><?php endif; ?></td>
             <td><?= h($tt['code']) ?> <?= h($tt['code_name']) ?><br><small class="muted"><?= h(label($tt['trans_type'])) ?>, <?= h(strtolower(TERM_TRANS_TERMS[$tt['trans_term']] ?? $tt['trans_term'])) ?></small></td>
             <td class="nowrap small"><?= h(fmt_date($tt['trans_date'])) ?></td>
             <td class="small"><?= h($tt['doc_no'] ?: '—') ?></td>
@@ -339,8 +350,13 @@ echo dimp_panel($dimp);
             <td class="actions">
               <a class="btn btn-xs" href="<?= h(url('emp_term_view', ['id' => $tt['id']])) ?>">View</a>
               <?php if ($tt['status'] !== 'cancelled'): ?><a class="btn btn-xs" href="<?= h(url('emp_transactions', array_merge($keep, ['edit_term' => $tt['id']]))) ?>">Edit</a><?php endif; ?>
-              <?php if ($tt['status'] === 'active'): ?>
+              <?php if (in_array($tt['status'], ['active', 'hold'], true)): ?>
                 <form method="post" class="inline"><?= csrf_field() ?><input type="hidden" name="id" value="<?= (int)$tt['id'] ?>">
+                  <?php if ($tt['status'] === 'active'): ?>
+                    <button class="btn btn-xs btn-hold" name="_action" value="term_hold" data-confirm="Put this transaction on hold? It is left out of the payroll until you press Resume." title="Stop it for a while">Hold</button>
+                  <?php else: ?>
+                    <button class="btn btn-xs btn-resume" name="_action" value="term_resume" title="Take it again from the next payroll">Resume</button>
+                  <?php endif; ?>
                   <button class="btn btn-xs btn-danger-outline" name="_action" value="term_cancel" data-confirm="Cancel this transaction with terms? Pending installments will no longer be taken.">Cancel</button>
                 </form>
               <?php endif; ?>
@@ -390,7 +406,8 @@ echo dimp_panel($dimp);
 
   <?php if ($editTerm):
       $et = $editTerm;
-      $lockFin = $termTaken > 0 || $et['status'] !== 'active'; ?>
+      $etRunning = in_array($et['status'], ['active', 'hold'], true);   // v31: a transaction on hold can still be edited
+      $lockFin = $termTaken > 0 || !$etRunning; ?>
   <div class="card et-form" id="termEdit">
     <h2>Edit transaction with terms</h2>
     <p class="muted small"><?= h(full_name($et)) ?>, <?= h($et['employee_no']) ?>. <?= $termTaken ? $termTaken . ' installment(s) already taken: the amount stays; the remaining balance of ' . h(money($et['balance'])) . ' is spread again over the remaining paydays.' : 'No installment taken yet: every field can be changed and the schedule is rebuilt.' ?></p>
@@ -406,11 +423,11 @@ echo dimp_panel($dimp);
             <optgroup label="Deductions" data-type="deduction"><?= options($dedCodes, $et['trans_type'] === 'deduction' ? $et['deduction_type_id'] : null) ?></optgroup>
           </select></div>
         <?php if ($lockFin): ?>
-          <div class="field"><label>Remaining paydays</label><input type="number" name="remaining_terms" min="1" max="520" value="<?= $termPending ?: 1 ?>"<?= $et['status'] !== 'active' ? ' disabled' : '' ?>><span class="help"><?= $termTaken ?> of <?= (int)$et['terms'] ?> taken.</span></div>
+          <div class="field"><label>Remaining paydays</label><input type="number" name="remaining_terms" min="1" max="520" value="<?= $termPending ?: 1 ?>"<?= !$etRunning ? ' disabled' : '' ?>><span class="help"><?= $termTaken ?> of <?= (int)$et['terms'] ?> taken.</span></div>
         <?php else: ?>
           <div class="field"><label>Terms (paydays)</label><input type="number" name="terms" id="etTerms" min="1" max="520" value="<?= (int)$et['terms'] ?>" required></div>
         <?php endif; ?>
-        <div class="field"><label>Trans. term</label><select name="trans_term" id="etTransTerm"<?= $et['status'] !== 'active' ? ' disabled' : '' ?>><?= options(TERM_TRANS_TERMS, $et['trans_term']) ?></select></div>
+        <div class="field"><label>Trans. term</label><select name="trans_term" id="etTransTerm"<?= !$etRunning ? ' disabled' : '' ?>><?= options(TERM_TRANS_TERMS, $et['trans_term']) ?></select></div>
         <?php if (!$lockFin): ?>
           <div class="field"><label>Monthly interest rate (%)</label><input type="number" name="monthly_rate" id="etRate" step="0.001" min="0" value="<?= h((string)(float)$et['monthly_rate']) ?>"></div>
           <div class="field"><label>Interest amount</label><input type="number" name="interest_amount" id="etInterest" step="0.01" min="0" value="<?= h(number_format((float)$et['interest_amount'], 2, '.', '')) ?>"><span class="help">Clear it to compute from the rate.</span></div>
@@ -418,7 +435,7 @@ echo dimp_panel($dimp);
           <div class="field"><label>Trans/PD (interest)</label><input type="number" name="per_pay_interest" id="etPPI" step="0.01" min="0" placeholder="computed"></div>
         <?php endif; ?>
         <div class="field"><label>Trans. date</label><input type="date" name="trans_date" value="<?= h($et['trans_date']) ?>"></div>
-        <div class="field"><label><?= $lockFin ? 'Next installment on or after' : 'Start (first payday on or after)' ?></label><input type="date" name="start_date" value="<?= h($lockFin ? ($et['next_date'] ?: today()) : $et['start_date']) ?>"<?= $et['status'] !== 'active' ? ' disabled' : '' ?>></div>
+        <div class="field"><label><?= $lockFin ? 'Next installment on or after' : 'Start (first payday on or after)' ?></label><input type="date" name="start_date" value="<?= h($lockFin ? ($et['next_date'] ?: today()) : $et['start_date']) ?>"<?= !$etRunning ? ' disabled' : '' ?>></div>
         <div class="field"><label>Document no.</label><input name="doc_no" maxlength="40" value="<?= h($et['doc_no'] ?? '') ?>"></div>
         <div class="field"><label>Co. / Branch</label><select name="branch_id"><?= options($branchOpts, $et['branch_id'], "Employee's branch") ?></select></div>
         <div class="field wide"><label>Remarks</label><input name="remarks" value="<?= h($et['remarks'] ?? '') ?>" maxlength="255"></div>

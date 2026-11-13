@@ -1703,6 +1703,11 @@ function dtr_hour_buckets(array $r, bool $monthlyRated): array
             break;
         case 'regular_holiday':
         case 'double_holiday':
+            // v31: a daily-rated employee's hours worked on a holiday are hours work (paid 100% in the basic pay, like the
+            // monthly-rated, whose salary pays the day); the holiday column keeps them for the premium only
+            if (!$monthlyRated) {
+                $add('hours_work', $reg);
+            }
             $add('lh_hrs', $reg);
             $add('lh_ot', $ot);
             $add('np_lh', $nd);
@@ -1716,6 +1721,9 @@ function dtr_hour_buckets(array $r, bool $monthlyRated): array
             $add('np_lh_rd_ot', $ndot);
             break;
         case 'special_holiday':
+            if (!$monthlyRated) {
+                $add('hours_work', $reg);   // v31: as on a regular holiday, the 100% is in the basic pay
+            }
             $add('sh_hrs', $reg);
             $add('sh_ot', $ot);
             $add('np_sh', $nd);
@@ -1907,7 +1915,7 @@ function summarize_cutoff(int $cutoffId, bool $overwriteManual = false, ?array $
                 q('DELETE FROM attendance_summaries WHERE id = ?', [$old['id']]);
             }
             $sid = insert('attendance_summaries', array_merge(['cutoff_id' => $cut['id'], 'employee_id' => $e['id'], 'source' => 'ams', 'updated_at' => now(),
-                'deduction_branch_id' => $old['deduction_branch_id'] ?? null], $s['header']));   // the Set Deduction Source survives a re-summary
+                'deduction_branch_id' => $old['deduction_branch_id'] ?? null], $s['header'] + pt_hol_flag()));   // the Set Deduction Source survives a re-summary
             // A restored or re-imported database can leave detail rows behind; clear them so the id is clean.
             q('DELETE FROM attendance_summary_lines WHERE summary_id = ?', [$sid]);
             q('DELETE FROM attendance_summary_branches WHERE summary_id = ?', [$sid]);

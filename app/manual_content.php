@@ -2556,6 +2556,7 @@ return [
     'Payroll side (Payroll Transaction): only closed attendance transactions are listed and paid. The pay master may still correct a closed transaction here until the payroll is finalized. Employees whose attendance is still open are not listed: close them first in Attendance Transaction Closing.',
     'Once the payroll of the period is closed and paid (Period Closing) every transaction is read-only on both sides.',
     'Attendance Summary Entry, Entry II, Batch Transaction Entry, Attendance Transaction Closing, Attendance Entry, Auto-Generate, Leave and Shift entry and the attendance CSV import list only the periods whose payroll is not yet closed. Paid periods stay readable from the Payroll Transaction screens and Periods & Cutoffs.',
+    'Daily-rated employees (version 31): the Hours work includes the hours worked on regular and special holidays (paid 100 per cent in the basic pay), and the legal and special holiday columns are paid for the premium only (special 30 per cent, regular 100 per cent), as for the monthly-rated. A note above the form says so; a transaction made before version 31 says that it keeps the former rule (holiday hours outside the Hours work, paid in full) until the attendance is processed again. Type and import the Hours work of a daily-rated employee with the holiday hours included.',
     'Monthly-salaried employees: the perfect-attendance hours of the period (every scheduled working day times the shift hours) are shown above the form. Every leave hour typed in VL, SL, EL, OL or PM is deducted from Hours work automatically, on screen as you type and again on save, so a monthly employee is never paid the leave twice.',
 ],
 'tips' => [
@@ -2676,7 +2677,7 @@ return [
 'route' => 'emp_transactions',
 'roles' => ['payroll'],
 'menu' => 'Payroll System (PAY) > Employee\'s Transactions',
-'keywords' => 'employee transaction one time earning deduction allowance adjustment penalty period pending included terms loan amortization interest paydays trans term first pay second pay every pay principal balance ledger schedule',
+'keywords' => 'employee transaction one time earning deduction allowance adjustment penalty period pending included terms loan amortization interest paydays trans term first pay second pay every pay principal balance ledger schedule hold resume pause stop temporarily',
 'purpose' => 'Two kinds of item. A one-time transaction happens once, for one period, and is picked up by the next payroll run of that period. A transaction with terms is a loan, an advance or a long-term allowance spread over several paydays: the system computes the interest, the per-payday principal and interest, and a schedule, and every matching payroll run takes one installment until the balance is zero.',
 'steps' => [
     'Choose the period and whether it is an earning or a deduction.',
@@ -2684,7 +2685,8 @@ return [
     'For a one-time item leave Terms at 1. Select one or several employees, add remarks and press Add transactions.',
     'For a transaction with terms set Terms to the number of paydays, choose the Trans. term (every pay, or only the 1st, 2nd, 3rd or 4th pay of the month), enter the monthly interest rate or type the interest amount, and check the preview: the number of months, the interest, the total and the amount per payday.',
     'Set the Trans. date, the Start date (the first payday on or after it may take an installment), the Document no. and the Co./Branch, then press Add transactions. One term record and its schedule are created per selected employee.',
-    'Read the Transactions with terms table: ST (A active, C completed, X cancelled), the principal, the interest, the terms paid over the total, the amount per pay, the total paid and the balance. Press View to open the ledger and schedule.',
+    'To stop a transaction with terms for a while, press Hold on its row (it turns amber, ST H, with the date it was held); press Resume to take it again. Status (with terms) Active lists the active ones and those on hold; On hold lists only those.',
+    'Read the Transactions with terms table: ST (A active, H on hold, C completed, X cancelled), the principal, the interest, the terms paid over the total, the amount per pay, the total paid and the balance. Press View to open the ledger and schedule.',
     'Press Edit on a transaction with terms to change it. While no installment is taken, everything can be changed (type, code, amount, rate, interest, terms, trans. term, Trans/PD, dates) and the schedule is rebuilt. Once installments are taken, the amount stays and the remaining balance is spread again over the remaining paydays you give, from the date you give. The document no., Co. / Branch, trans. date and remarks can always be changed.',
     'Narrow the list with Co. / Branch, Department, Employee group, Employee type and Find employee (the lists refresh while typing). The Employees list of New transaction follows the same filters.',
     'In Transaction codes tick one, two, three or more earnings and deductions, each with its own amount. With Terms above 1 each code becomes a transaction with terms (the per-payday overrides apply when only one code is ticked).',
@@ -2708,6 +2710,7 @@ return [
     'Editing a transaction whose installment is reserved by a payroll run still being computed asks to process that run again.',
     'A cancelled transaction cannot be edited; re-activate it first. Every edit is kept in the audit trail.',
     'Cancelling a transaction with terms stops future installments but keeps the ledger of what was already paid. A cancelled item can be re-activated from its ledger.',
+    'Hold (temporarily stop) and Resume: a transaction on hold is left out of every payroll computed while it is on hold. Its pending installments wait and are taken again, one per payday, from the first payroll after Resume, so the schedule simply moves back by the paydays skipped. It can still be edited, receive a payment outside the payroll, change its amortization or be cancelled, and a final pay still settles its balance. When a payroll run not yet finalized already took an installment of it (or, on Resume, was computed without it), the screen names the run to process again. Hold and Resume are kept in the audit trail.',
     'An earning code carries its own tax treatment from the transaction table: taxable, de minimis, a special earning, or a separate withholding rate.',
     'A code marked reference only is shown on the payslip but is neither paid nor deducted.',
     'After saving a transaction the screen comes back with the same filters, so the next transaction of the same group of employees can be entered at once.',
@@ -2736,10 +2739,11 @@ return [
     'The Ledger lists what was actually taken, run by run, with the receipt of any payment made outside payroll.',
     'Record a Payment outside payroll (cash, a bank transfer, a final-pay offset done by hand) with the date, the amount and the receipt. The pending installment is split, the paid part is closed and the rest stays due.',
     'Update the amortization to change the per-payday principal and interest for the remaining installments, for example after a partial payment or a restructuring.',
+    'Press Hold (with an optional reason) to stop the transaction for a while: the payroll leaves it out until you press Resume, at the top of the page or in the On hold panel.',
     'Press Cancel to stop future installments while keeping the ledger. Press Re-activate to resume a cancelled item.',
 ],
 'fields' => [
-    ['Status', 'Active, Completed (balance zero) or Cancelled.'],
+    ['Status', 'Active, On hold (since when, and why), Completed (balance zero) or Cancelled.'],
     ['Document no. and Remarks', 'Editable here with Save details.'],
 ],
 'rules' => [
@@ -4401,6 +4405,7 @@ return [
 'purpose' => 'Four tabs of settings that shape every computed amount. This is where the premium percentages that are actually paid are kept.',
 'steps' => [
     'Comp. Rates holds the percentage of the hourly rate paid for each kind of hour, and the night premium percentage on top of it. The Labor Code minimums are overtime at 125 per cent, rest day at 130, legal holiday at 200, special day at 130 and a night differential of at least 10 per cent.',
+    'Holidays worked, monthly-rated and daily-rated alike (version 31): the day itself is in the basic pay (the monthly salary, or, for a daily-rated employee, the hours worked on the holiday counted in the Hours work at 100 per cent), and the holiday line pays the premium only: special day 130 - 100 = 30 per cent, regular holiday 200 - 100 = 100 per cent. Example, daily-rated at 72.75 an hour with 88 ordinary hours and 16 hours on a special day: Basic 104 hrs x 72.75 = 7,566.00, Special holiday (SPE) REG 16 hrs x 30% = 349.20. A holiday falling on the rest day keeps its own rate (on top of nothing). Transactions made before version 31 keep their rule until the attendance is processed again.',
     'Processing Config holds the conversion factor, the Pag-IBIG rules, whether overtime is taxable, what the taxable base is, how the SSS bracket is looked up, the minimum take-home amount and the meal and ticket rates.',
     'Annual and Accounting Configuration holds whether paid leave counts in the 13th month basis, whether the tax is annualized in December, and every GL account the journal falls back to.',
     'Payslip Parameters holds the payslip heading, whether year-to-date figures, loan balances and hours are shown, the copy stamp, the number of payslips per page and the disclaimer.',

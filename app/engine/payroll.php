@@ -550,7 +550,7 @@ function payroll_build_item(array $run, array $pg, array $emp, array &$ctx): ?ar
             } elseif ($isFinal || !empty($ctx['live'])) {
                 process_dtr_range([$empId], $salaryFrom, $salaryTo);
                 $sd = attendance_summary_data($emp, $salaryFrom, $salaryTo);
-                $T = $sd['header'];
+                $T = $sd['header'] + ['hol_in_basic' => 1];   // v31: built now, with the holiday hours in the hours work
                 $TB = count($sd['branches']) > 1 ? $sd['branches'] : [];
             } elseif (!$useDaily) {
                 $T = pt_blank();
@@ -715,6 +715,7 @@ function payroll_build_item(array $run, array $pg, array $emp, array &$ctx): ?ar
 
             // premiums, overtime and night premium per branch (Comp. Rates: hourly rate x hours x rate)
             $otOffset = $emp['job_id'] ? (bool)val('SELECT ot_offset FROM jobs WHERE id = ?', [$emp['job_id']]) : false;
+            $holInBasic = pt_hol_in_basic($T, $emp);   // v31: daily-rated, holiday hours worked already in the basic pay
             foreach (PT_RATE_OF as $f => $rc) {
                 $isNp = strpos($f, 'np_') === 0;
                 foreach ($rowsB as $b => $rb) {
@@ -723,8 +724,10 @@ function payroll_build_item(array $run, array $pg, array $emp, array &$ctx): ?ar
                         continue;
                     }
                     $pct = $isNp ? $PR[$rc]['night'] : $PR[$rc]['day'];
-                    if (!$isNp && !$useDaily && in_array($f, ['lh_hrs', 'sh_hrs'], true)) {
-                        $pct -= 100; // the monthly salary already pays the day itself
+                    if (!$isNp && (!$useDaily || $holInBasic) && in_array($f, ['lh_hrs', 'sh_hrs'], true)) {
+                        // the monthly salary already pays the day itself; v31: so does the basic pay of a daily-rated
+                        // employee, whose hours worked on the holiday are in the hours work: only the premium is added
+                        $pct -= 100;
                     }
                     $isOt = in_array($f, PT_OT_FIELDS, true);
                     if ($isOt && $otOffset) {
@@ -806,7 +809,9 @@ function payroll_build_item(array $run, array $pg, array $emp, array &$ctx): ?ar
     /* ------------------------------------------------ 2. Benefits, fixed & employee transactions, pending earnings, adjustments */
     if (in_array($type, ['regular', 'final_pay'], true)) {
         $Tv0 = fn(string $k) => (float)($T[$k] ?? 0);
-        $dutyHours = max(0, $Tv0('hours_work') - $Tv0('absent_hrs') - $Tv0('late_hrs') - $Tv0('undertime_hrs')) + $Tv0('rd_hrs') + $Tv0('lh_rd') + $Tv0('sh_rd');
+        // v31: the holiday hours inside the hours work of a daily-rated employee count with the holidays, as before
+        $holInHw = pt_hol_in_basic($T ?: null, $emp) ? $Tv0('lh_hrs') + $Tv0('sh_hrs') : 0.0;
+        $dutyHours = max(0, $Tv0('hours_work') - $holInHw - $Tv0('absent_hrs') - $Tv0('late_hrs') - $Tv0('undertime_hrs')) + $Tv0('rd_hrs') + $Tv0('lh_rd') + $Tv0('sh_rd');
         $holHours = $Tv0('holiday_hrs') + $Tv0('lh_hrs') + $Tv0('sh_hrs');
         $daysPerWeek = max(1, $rates['factor'] * 12 / 52);
         $absRatio = $Tv0('hours_work') > 0 ? min(1, $Tv0('absent_hrs') / $Tv0('hours_work')) : 0;

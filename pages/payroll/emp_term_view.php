@@ -2,6 +2,7 @@
 /**
  * Employee's transaction with terms — schedule (installments), ledger of postings,
  * payments outside the payroll, amortization change, cancel / re-activate.
+ * v31: Hold (left out of the payroll for a while) and Resume.
  */
 $id = (int)get('id', 0);
 $t = $id ? term_get($id) : null;
@@ -30,6 +31,15 @@ if (is_post()) {
                 term_reactivate($id);
                 flash('success', 'Transaction re-activated.');
                 break;
+            case 'hold':
+            case 'resume':
+                $runs = $action === 'hold' ? term_hold($id, trim((string)post('reason')) ?: null) : term_resume($id);
+                flash('success', $action === 'hold' ? 'Transaction on hold: it is left out of the payroll until you press Resume. Its pending installments wait.'
+                    : 'Transaction resumed: the payroll takes its installments again from the next payroll computed.');
+                if ($runs) {
+                    flash('info', 'Process payroll run ' . implode(', ', $runs) . ' again so its figures follow this change.');
+                }
+                break;
             case 'remarks':
                 update('employee_term_trans', ['doc_no' => trim((string)post('doc_no')) ?: null, 'remarks' => trim((string)post('remarks')) ?: null, 'updated_at' => now()], 'id = ?', [$id]);
                 audit('payroll', 'term_trans_update', 'employee_term_trans', $id, ['doc_no' => post('doc_no'), 'remarks' => post('remarks')]);
@@ -47,9 +57,16 @@ $posted = array_filter($sched, fn($s) => in_array($s['status'], ['posted', 'paid
 $pending = array_filter($sched, fn($s) => $s['status'] === 'pending');
 $perPay = (float)$t['per_pay_principal'] + (float)$t['per_pay_interest'];
 $statusText = TERM_TRANS_STATUS[$t['status']] ?? $t['status'];
+if ($t['status'] === 'hold') {
+    $statusText .= (!empty($t['held_at']) ? ' since ' . fmt_date(substr((string)$t['held_at'], 0, 10)) : '') . (!empty($t['hold_reason']) ? ' (' . $t['hold_reason'] . ')' : '');
+}
 
 $actions = '<a class="btn" href="' . h(url('emp_transactions', ['tstatus' => 'all', 'q' => $t['employee_no']])) . '">All transactions of ' . h($t['last_name']) . '</a>'
     . '<a class="btn" href="' . h(url('employee_view', ['id' => $t['employee_id']])) . '">201 file</a>';
+if ($t['status'] === 'hold') {
+    // v31: the transaction on hold is resumed from the top of the page too
+    $actions .= '<form method="post" class="inline">' . csrf_field() . '<input type="hidden" name="_action" value="resume"><button class="btn btn-resume">Resume</button></form>';
+}
 $actions .= $t['status'] !== 'cancelled' ? '<a class="btn btn-primary" href="' . h(url('emp_transactions', ['tstatus' => 'all', 'q' => $t['employee_no'], 'edit_term' => $t['id']])) . '#termEdit">Edit</a>' : '';
 page_header('Transaction with terms — ' . $t['code'] . ' ' . $t['code_name'], [
     'back' => url('emp_transactions', ['tstatus' => 'all']),
@@ -143,6 +160,27 @@ page_header('Transaction with terms — ' . $t['code'] . ' ' . $t['code_name'], 
     </div>
 
     <?php if ($t['status'] === 'active'): ?>
+    <div class="card">
+      <h2>Hold</h2>
+      <p class="muted small">Stops this transaction for a while: it is left out of every payroll computed until you press Resume. Its pending installments wait and are taken again, one per payday, after Resume. A final pay still settles it.</p>
+      <form method="post" data-confirm="Put this transaction on hold?">
+        <?= csrf_field() ?><input type="hidden" name="_action" value="hold">
+        <div class="field"><label>Reason</label><input name="reason" maxlength="120" placeholder="e.g. employee on leave without pay, agreed deferment"></div>
+        <div class="form-actions"><button class="btn btn-hold">Hold</button></div>
+      </form>
+    </div>
+    <?php elseif ($t['status'] === 'hold'): ?>
+    <div class="card term-held">
+      <h2>On hold</h2>
+      <p class="small">Left out of the payroll<?= !empty($t['held_at']) ? ' since ' . h(fmt_dt($t['held_at'])) : '' ?><?= !empty($t['held_by']) ? ' by ' . h((string)val('SELECT full_name FROM users WHERE id = ?', [(int)$t['held_by']])) : '' ?>.<?= !empty($t['hold_reason']) ? ' Reason: ' . h($t['hold_reason']) . '.' : '' ?></p>
+      <form method="post">
+        <?= csrf_field() ?><input type="hidden" name="_action" value="resume">
+        <div class="form-actions"><button class="btn btn-resume">Resume</button></div>
+      </form>
+    </div>
+    <?php endif; ?>
+
+    <?php if (in_array($t['status'], ['active', 'hold'], true)): ?>
     <div class="card">
       <h2>Payment outside the payroll</h2>
       <p class="muted small">A payment made at the cashier or to the agency settles the next installments, so the payroll takes only what is still outstanding.</p>

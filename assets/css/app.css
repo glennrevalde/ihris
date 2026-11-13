@@ -1659,6 +1659,10 @@ fieldset.seg-field .seg label { padding: 7px 14px; font-size: 13px; }
 .row-hold td { background: #fffaf0; }
 .btn-hold { color: #92400e; border-color: #f5d08a; background: #fef3c7; }
 .btn-resume { color: #05603a; border-color: var(--green-bd); background: var(--green-bg); }
+/* v31: transactions with terms on hold */
+.et-held { color: #92400e; font-weight: 600; }
+.term-held { border-color: #f5d08a; background: #fffaf0; }
+.term-held h2 { color: #92400e; }
 .ed-indicator { font-weight: 650; }
 .ed-indicator.is-earning { color: #067647; }
 .ed-indicator.is-deduction { color: #b45309; }

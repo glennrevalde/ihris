@@ -21,7 +21,7 @@ const TERM_TRANS_TERMS = [
     'fourth_pay' => '4th pay of the month (weekly)',
 ];
 
-const TERM_TRANS_STATUS = ['active' => 'Active', 'completed' => 'Completed', 'cancelled' => 'Cancelled'];
+const TERM_TRANS_STATUS = ['active' => 'Active', 'hold' => 'On hold', 'completed' => 'Completed', 'cancelled' => 'Cancelled'];
 
 /** Period number of the month a transaction term corresponds to (null = every pay). */
 function term_period_no(string $transTerm): ?int
@@ -160,9 +160,9 @@ function term_recalc(int $termId): void
     $paid = row("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS amt FROM employee_term_schedule WHERE term_id = ? AND status IN ('posted','paid')", [$termId]);
     $pending = row("SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS amt, MIN(due_date) AS next_date FROM employee_term_schedule WHERE term_id = ? AND status = 'pending'", [$termId]);
     $balance = round(max(0, (float)$t['total_amount'] - (float)$paid['amt']), 2);
-    $status = $t['status'] === 'cancelled' ? 'cancelled' : (((int)$pending['n'] === 0 || $balance <= 0.004) ? 'completed' : 'active');
+    $status = $t['status'] === 'cancelled' ? 'cancelled' : (((int)$pending['n'] === 0 || $balance <= 0.004) ? 'completed' : ($t['status'] === 'hold' ? 'hold' : 'active'));
     update('employee_term_trans', ['paid_terms' => (int)$paid['n'], 'total_paid' => round((float)$paid['amt'], 2), 'balance' => $balance,
-        'next_date' => $status === 'active' ? $pending['next_date'] : null, 'status' => $status, 'updated_at' => now()], 'id = ?', [$termId]);
+        'next_date' => in_array($status, ['active', 'hold'], true) ? $pending['next_date'] : null, 'status' => $status, 'updated_at' => now()], 'id = ?', [$termId]);
 }
 
 /**
@@ -180,7 +180,8 @@ function term_due_for_run(int $empId, array $run, string $frequency): array
     $terms = rows("SELECT tt.*, ea.code AS e_code, ea.name AS e_name, ea.taxable, ea.special, ea.de_minimis, ea.ref_ext AS e_ref,
                           dt.code AS d_code, dt.name AS d_name, dt.register_group, dt.ref_ext AS d_ref
                    FROM employee_term_trans tt LEFT JOIN earning_types ea ON ea.id = tt.earning_type_id LEFT JOIN deduction_types dt ON dt.id = tt.deduction_type_id
-                   WHERE tt.employee_id = ? AND tt.status = 'active' AND tt.start_date <= ? ORDER BY tt.id", [$empId, $run['period_end']]);
+                   WHERE tt.employee_id = ? AND " . ($isFinal ? "tt.status IN ('active','hold')" : "tt.status = 'active'") . " AND tt.start_date <= ? ORDER BY tt.id", [$empId, $run['period_end']]);
+    // v31: a transaction on hold is left out of the payroll until it is resumed; a final pay settles it all the same
     $out = [];
     foreach ($terms as $t) {
         $no = term_period_no($t['trans_term']);
@@ -242,8 +243,8 @@ function term_post_installment(int $scheduleId, int $runId, string $runNo, strin
 function term_pay_outside(int $termId, float $amount, string $date, ?string $reference = null): float
 {
     $t = row('SELECT * FROM employee_term_trans WHERE id = ?', [$termId]);
-    if (!$t || $t['status'] !== 'active') {
-        throw new RuntimeException('Only active transactions can receive a payment.');
+    if (!$t || !in_array($t['status'], ['active', 'hold'], true)) {
+        throw new RuntimeException('Only active transactions (or on hold) can receive a payment.');
     }
     $amount = round($amount, 2);
     if ($amount <= 0 || $amount > (float)$t['balance'] + 0.004) {
@@ -286,6 +287,61 @@ function term_cancel(int $termId, ?string $reason = null): void
     audit('payroll', 'term_trans_cancel', 'employee_term_trans', $termId, ['reason' => $reason, 'balance' => $t['balance']]);
 }
 
+/**
+ * v31 Hold: stop a transaction with terms for a while. It is left out of every payroll computed while on hold: its
+ * pending installments wait and are taken again, one by one, from the first payroll after Resume (the schedule moves
+ * back by the paydays skipped). Payments outside the payroll, amortization changes and cancelling still work; a
+ * final pay settles it all the same. Returns the payroll runs (draft / computed) that already took an installment of
+ * it, to be processed again.
+ */
+function term_hold(int $termId, ?string $reason = null): array
+{
+    $t = row('SELECT * FROM employee_term_trans WHERE id = ?', [$termId]);
+    if (!$t || $t['status'] !== 'active') {
+        throw new RuntimeException('Only an active transaction with terms can be put on hold.');
+    }
+    $hold = ['status' => 'hold', 'updated_at' => now()];
+    if (mig_column_exists('employee_term_trans', 'held_at')) {
+        $hold += ['held_at' => now(), 'held_by' => user_id(), 'hold_reason' => $reason !== null && trim($reason) !== '' ? mb_substr(trim($reason), 0, 120) : null];
+    }
+    update('employee_term_trans', $hold, 'id = ?', [$termId]);
+    audit('payroll', 'term_trans_hold', 'employee_term_trans', $termId, ['reason' => $reason, 'balance' => $t['balance']]);
+    return term_runs_holding($termId);
+}
+
+/** v31 Resume: the transaction on hold is taken again from the next payroll computed. Returns the runs to process again. */
+function term_resume(int $termId): array
+{
+    $t = row('SELECT * FROM employee_term_trans WHERE id = ?', [$termId]);
+    if (!$t || $t['status'] !== 'hold') {
+        throw new RuntimeException('Only a transaction on hold can be resumed.');
+    }
+    $res = ['status' => 'active', 'updated_at' => now()];
+    if (mig_column_exists('employee_term_trans', 'held_at')) {
+        $res += ['held_at' => null, 'held_by' => null, 'hold_reason' => null];
+    }
+    update('employee_term_trans', $res, 'id = ?', [$termId]);
+    term_recalc($termId);
+    audit('payroll', 'term_trans_resume', 'employee_term_trans', $termId, ['held_since' => $t['held_at'] ?? null]);
+    return term_runs_holding($termId, true);
+}
+
+/**
+ * v31: the payroll runs not finalized yet whose figures no longer match a hold / resume of the transaction: those that
+ * took one of its pending installments ($resumed = false), or every draft / computed regular run of the employee's pay
+ * code ($resumed = true: they were computed without it).
+ */
+function term_runs_holding(int $termId, bool $resumed = false): array
+{
+    if ($resumed) {
+        return q("SELECT DISTINCT pr.run_no FROM payroll_runs pr JOIN employees e ON e.pay_group_id = pr.pay_group_id JOIN employee_term_trans tt ON tt.employee_id = e.id
+                  WHERE tt.id = ? AND pr.status IN ('draft','computed') AND pr.run_type = 'regular'", [$termId])->fetchAll(PDO::FETCH_COLUMN);
+    }
+    return q("SELECT DISTINCT pr.run_no FROM payroll_item_lines l JOIN payroll_items pi ON pi.id = l.item_id JOIN payroll_runs pr ON pr.id = pi.run_id
+              JOIN employee_term_schedule s ON s.id = l.ref_id
+              WHERE l.ref_type = 'term_trans' AND s.term_id = ? AND s.status = 'pending' AND pr.status IN ('draft','computed')", [$termId])->fetchAll(PDO::FETCH_COLUMN);
+}
+
 /** Reactivate a cancelled transaction (its cancelled installments become pending again). */
 function term_reactivate(int $termId): void
 {
@@ -303,8 +359,8 @@ function term_reactivate(int $termId): void
 function term_update_amortization(int $termId, float $perPay): void
 {
     $t = row('SELECT * FROM employee_term_trans WHERE id = ?', [$termId]);
-    if (!$t || $t['status'] !== 'active') {
-        throw new RuntimeException('Only active transactions can be changed.');
+    if (!$t || !in_array($t['status'], ['active', 'hold'], true)) {
+        throw new RuntimeException('Only active transactions (or on hold) can be changed.');
     }
     $perPay = round($perPay, 2);
     if ($perPay <= 0) {
@@ -374,7 +430,7 @@ function term_update(int $termId, array $d): array
     $before = $t;
     tx(function () use ($t, $termId, $d, $freq, $taken, $meta) {
         update('employee_term_trans', $meta + ['updated_at' => now()], 'id = ?', [$termId]);
-        if ($t['status'] !== 'active') {
+        if (!in_array($t['status'], ['active', 'hold'], true)) {
             return;   // completed: only the record fields above
         }
         $transTerm = isset(TERM_TRANS_TERMS[$d['trans_term'] ?? '']) ? $d['trans_term'] : $t['trans_term'];
