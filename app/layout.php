@@ -433,7 +433,7 @@ function page_footer(): void
 <?php else: ?>
 </div>
 <?php endif; ?>
-<script src="assets/js/app.js?v=32"></script>
+<script src="assets/js/app.js?v=33"></script>
 <script src="assets/js/pdf.js?v=32"></script>
 </body>
 </html>

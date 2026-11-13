@@ -88,9 +88,9 @@ const SHIFT_FLEX_TYPES = [
     1 => '1. Flexible, 4 logs (Time in, Break out, Break in, Time out): below the required hours is undertime',
     2 => '2. Flexible, 2 logs, break minutes allocated: below the required hours is undertime',
     3 => '3. Flexible, 2 logs, no break: below the required hours is undertime',
-    4 => '4. Flexible, 2 logs, break minutes allocated: only the rendered hours are hours work',
-    5 => '5. Flexible, 2 logs, no break: only the rendered hours are hours work',
-    6 => '6. Flexible, 4 logs (Time in, Break out, Break in, Time out): only the rendered hours are hours work',
+    4 => '4. Flexible, 2 logs, break minutes allocated: only the rendered hours are hours work (no required hours)',
+    5 => '5. Flexible, 2 logs, no break: only the rendered hours are hours work (no required hours)',
+    6 => '6. Flexible, 4 logs (Time in, Break out, Break in, Time out): only the rendered hours are hours work (no required hours)',
     7 => '7. Flexible, 2 logs, no break: the required hours are credited (no late, no undertime)',
     8 => '8. Flexible, 4 logs (Time in, Break out, Break in, Time out): the required hours are credited (no late, no undertime)',
 ];
@@ -219,6 +219,10 @@ function shift_coverage(array $shift): string
         $hrs = rtrim(rtrim(number_format((float)($shift['required_hours'] ?? 0), 2), '0'), '.');
         $bk = flex_break_kind($fx);
         $mode = flex_mode($fx);
+        if ($mode === 'rendered') {
+            // v30 kinds 4-6: no required hours, the employee works at his / her convenience
+            return 'Flexible, hours rendered' . ($bk === 'logged' ? ', break as logged' : ($bk === 'allocated' ? ', ' . (int)$shift['break_minutes'] . '-min. break' : ', no break'));
+        }
         return 'Flexible, ' . $hrs . ' hrs' . ($bk === 'logged' ? ' + break as logged' : ($bk === 'allocated' ? ' + ' . (int)$shift['break_minutes'] . '-min. break' : ', no break'))
             . ($mode === 'rendered' ? ', rendered hours' : ($mode === 'credit' ? ', hours credited' : ''));
     }
@@ -265,13 +269,17 @@ function shift_tip_html(array $shift): string
     }
     $h .= '</tbody></table>';
     $req = $shift['required_hours'] !== null && (float)$shift['required_hours'] > 0 ? (float)$shift['required_hours'] : shift_computed_hours($shift)['required_hours'];
+    $rendered = shift_flex_type($shift) && flex_mode(shift_flex_type($shift)) === 'rendered';
     $days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     $rest = shift_is_7day($shift) ? 'Worked 7 days: the default day-off of the employee'
         : 'Rest day: ' . implode(', ', array_map(fn($d) => $days[(int)$d] ?? $d, array_filter(explode(',', (string)$shift['rest_days']), 'strlen')));
     $fxm = shift_flex_type($shift) ? flex_mode(shift_flex_type($shift)) : '';
     $fxNote = $fxm === 'undertime' ? '<br>Flexible: no late; below the hours is undertime'
-        : ($fxm === 'rendered' ? '<br>Flexible: no late, no undertime; the hours rendered are the hours work'
+        : ($fxm === 'rendered' ? 'Flexible: no required hours; the hours rendered are the hours work (no late, undertime or absence)'
             : ($fxm === 'credit' ? '<br>Flexible: a complete working day counts these hours; no late, no undertime' : ''));
+    if ($rendered) {
+        return $h . '<div class="sp-foot">' . $fxNote . '<br>' . h($rest) . '</div>';
+    }
     return $h . '<div class="sp-foot">' . h(rtrim(rtrim(number_format((float)$req, 2), '0'), '.')) . ' working hours' . ((int)($shift['flex_minutes'] ?? 0) ? ', ' . (int)$shift['flex_minutes'] . ' min. flexible' : '') . $fxNote . '<br>' . h($rest) . '</div>';
 }
 
@@ -872,9 +880,9 @@ function punch_retype(int $logId, string $type, string $reason = ''): array
 }
 
 /**
- * The logs the AMS policy "# of minutes between LOGS w/ same TYPE as INVALID" leaves out, for
- * display on the raw log screens: id => reason. Same rule as dtr_collect_punches(), applied per
- * employee and calendar day.
+ * The logs the AMS policy "# of minutes between LOGS as INVALID" leaves out, for display on the raw
+ * log screens: id => reason. Same rule as dtr_collect_punches(), applied per employee and calendar day.
+ * v30: every log inside the window of the previous counted log is the same log, whatever its type.
  */
 function punch_invalid_ids(array $logs): array
 {
@@ -888,15 +896,15 @@ function punch_invalid_ids(array $logs): array
     $out = [];
     foreach ($groups as $g) {
         usort($g, fn($a, $b) => strcmp($a['log_time'], $b['log_time']) ?: ((int)$a['id'] <=> (int)$b['id']));
-        $lastByType = [];
+        $last = null;
         foreach ($g as $l) {
             $t = strtotime($l['log_time']);
-            $k = $l['punch_type'];
-            if (isset($lastByType[$k]) && $t - $lastByType[$k] < $gap) {
-                $out[(int)$l['id']] = sprintf('Not counted: within %d min of the previous %s log (AMS policy).', att_cfg()['dup_minutes'], $k === 'unknown' ? 'untyped' : label($k));
+            if ($last !== null && $t - $last[0] < $gap) {
+                $out[(int)$l['id']] = sprintf('Not counted: within %d min of the %s log of %s, the same log (AMS policy).', att_cfg()['dup_minutes'],
+                    $last[1] === 'unknown' ? 'untyped' : strtolower(label($last[1])), date('h:i A', $last[0]));
                 continue;
             }
-            $lastByType[$k] = $t;
+            $last = [$t, (string)$l['punch_type']];
         }
     }
     return $out;
@@ -906,9 +914,10 @@ function punch_invalid_ids(array $logs): array
  * Read and assign the punches of a day: In, Break Out 1, Break In 1, Break Out 2, Break In 2, Out.
  *
  * Follows the AMS Policies & Configurations:
- *  - "# of minutes between logs as INVALID": a punch that follows another punch of the same type
- *    inside that window is not counted (a double tap on the terminal). Punches without a usable
- *    type are held to the same window against the previous punch of any type.
+ *  - "# of minutes between LOGS as INVALID": v30, every punch inside that window after the previous
+ *    counted punch is the same punch and is not counted, whatever its type (Time in 07:14 and a
+ *    Break out 07:17 with a 15-minute window: 07:17 is invalid). The window starts again at the next
+ *    counted punch.
  *  - "Use 6 logs per day" and the shift code's Logs per day decide how many punches make a day.
  *  - When the device only says In / Out (or nothing), the punches are placed by position, the
  *    way the Attendance Entry grid shows them: first = time in, last = time out, the ones in
@@ -930,26 +939,25 @@ function dtr_collect_punches(int $empId, array $sched, string $date): array
     $logs = rows("SELECT * FROM attendance_logs WHERE employee_id = ? AND log_time BETWEEN ? AND ? AND verify_status <> 'rejected' ORDER BY log_time, id",
         [$empId, $ws, $we]);
     $lpd = shift_logs_per_day($sched['shift'] ?? null);
-    $rawTypes = array_unique(array_column($logs, 'punch_type'));
-    $byType = (bool)array_intersect($rawTypes, ['break_out', 'break_in']);   // explicit break punches: place by type
     $gap = $c['dup_minutes'] * 60;
     $clean = [];
-    $lastByType = [];
+    $last = null;
     $invalid = 0;
     foreach ($logs as $l) {
-        // a log repeating the previous log of the same type (as the device or file recorded it, untyped
-        // logs included) inside the policy window is a double tap and is not counted; a log of another
-        // type, such as the break in after a 15-minute break, always counts
+        // v30: a log inside the policy window of the previous counted log is the same log, whatever the type
+        // the device or file gave it (Time in 07:14, Break out 07:17 = one log at 07:14), and is not counted
         $t = strtotime($l['log_time']);
-        $k = $l['punch_type'];
-        if (isset($lastByType[$k]) && $t - $lastByType[$k] < $gap) {
+        if ($last !== null && $t - $last < $gap) {
             $invalid++;
             continue;
         }
-        $lastByType[$k] = $t;
+        $last = $t;
         $clean[] = $l;
     }
     $logs = $clean;
+    // explicit break punches among the counted logs: place by type (v30: read after the invalid logs are left out)
+    $rawTypes = array_unique(array_column($logs, 'punch_type'));
+    $byType = (bool)array_intersect($rawTypes, ['break_out', 'break_in']);
     $p = ['in' => null, 'bo1' => null, 'bi1' => null, 'bo2' => null, 'bi2' => null, 'out' => null];
     $res = ['p' => $p + ['oti' => null, 'oto' => null], 'source' => null, 'web' => [], 'branch' => null, 'count' => count($logs), 'invalid' => $invalid, 'lpd' => $lpd];
     if (!$logs) {
@@ -1189,6 +1197,12 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
                 $d['holiday_minutes'] = $hm;
                 $d['log_status'] = $hol === 'special' ? 'Special Holiday' : ($hol === 'double' ? 'Double Holiday' : 'Legal Holiday');
             }
+        } elseif ($fxMode === 'rendered') {
+            // v30 flexible kinds 4-6: the employee works at his / her convenience; a day without logs is simply a day
+            // without work (no absence), so only the hours rendered are ever paid
+            $d['status'] = 'no_schedule';
+            $d['is_workday'] = 0;
+            $d['log_status'] = $date > today() ? null : 'No work (free schedule)';
         } elseif ($date > today()) {
             $d['status'] = 'pending';
         } else {
@@ -1199,10 +1213,10 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
     } elseif (!$tin || !$tout) {
         $ex[] = !$tin ? 'missing_in' : 'missing_out';
         $d['log_status'] = 'Incomplete';
-        if ($isWorkday && $c['inc_absent']) {
+        if ($isWorkday && $c['inc_absent'] && $fxMode !== 'rendered') {
             $d['status'] = 'absent';
             $d['absent_minutes'] = $req;
-        } elseif ($isWorkday && $c['inc_ut'] && $fx && $fxMode !== 'credit') {
+        } elseif ($isWorkday && ($c['inc_ut'] || $fxMode === 'rendered') && $fx && $fxMode !== 'credit') {
             // flexible shift: what was rendered between the first and the last log counts; the rest of the
             // required hours is undertime (never late). v26: on a rendered-hours kind (4-6) there is no undertime.
             // A credited kind (7-8) needs both logs: it stays incomplete until corrected.
@@ -1215,7 +1229,8 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
             foreach (flex_break_windows($fx, $shift, $first, $last, $logged) as $bk) {
                 $reg -= overlap_min($first, $last, $bk[0], $bk[1]);
             }
-            $reg = max(0, min($reg, $req));
+            // v30 kinds 4-6 have no required hours: whatever was rendered counts, without a ceiling
+            $reg = $fxMode === 'rendered' ? max(0, $reg) : max(0, min($reg, $req));
             $d['status'] = 'present';
             $d['regular_minutes'] = $d['worked_minutes'] = $reg;
             $d['undertime_minutes'] = $fxMode === 'rendered' ? 0 : max(0, $req - $reg) + $c['inc_penalty'];
@@ -1313,6 +1328,13 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
                 $reg = min($net, $maxReg);
                 $ut = ($sched['is_rest'] || $noLate || $fxMode !== 'undertime') ? 0 : max(0, $req - $net);
                 $ot = $net - $reg;
+                if ($fxMode === 'rendered') {
+                    // v30 kinds 4-6: no Total required duty hours; all the hours rendered are hours work (1, 2, 3, 4 or
+                    // more, as the employee chooses): no late, no undertime, no absence, nothing split off as overtime
+                    $reg = $net;
+                    $ot = 0;
+                    $ut = 0;
+                }
                 if ($fxMode === 'credit' && !$sched['is_rest']) {
                     // v26 credited kinds (7-8): a complete working day counts the Total required duty hours, whatever
                     // was rendered (no late, no undertime). Time beyond them is overtime only with an approved overtime
@@ -1323,7 +1345,8 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
                 if ($ot < $c['ot_min']) {
                     $ot = 0;
                 }
-                if (flex_break_kind($fx) === 'logged' && !$actual) {
+                if (flex_break_kind($fx) === 'logged' && !$actual && ($out - $in) > 5 * 3600) {
+                    // (v30: only a day long enough to need a break; 1:00 to 3:00 PM is complete without one)
                     $d['log_status'] = $p['bo1'] || $p['bi1'] ? 'No ' . ($p['bo1'] ? 'break in' : 'break out') . ' log' : 'No break logs';
                 }
                 $d['regular_minutes'] = $reg;
@@ -1534,6 +1557,14 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
             }
         }
     }
+    if ($fxMode === 'rendered') {
+        // v30 kinds 4-6: no late, undertime or absence in any case (unpaid leave, suspension, holiday rules included)
+        $d['late_minutes'] = $d['undertime_minutes'] = $d['absent_minutes'] = $d['penalty_minutes'] = 0;
+        if ($d['status'] === 'absent') {
+            $d['status'] = 'no_schedule';
+            $d['is_workday'] = 0;
+        }
+    }
     foreach (array_keys($webFlags) as $wf) {
         $ex[] = $wf;
     }
@@ -1571,7 +1602,7 @@ function process_dtr(int $empId, string $date, bool $force = false): ?array
  * interval policy), so records computed by an older version are rebuilt the first time they are
  * shown or summarized. Locked (approved) days are never touched.
  */
-const DTR_CALC_VERSION = 11;   // 11 (v25): flexible shifts; 10 (v24): a late within the grace period is not late; 9 (v22): a lone terminal punch placed by the schedule; 6 (v16): pre-arranged overtime; 7 (v17): logs outside the shift, late capped at the shift hours; 8 (v18): day-off of the shift / masterfile on shift-only overrides
+const DTR_CALC_VERSION = 12;   // 12 (v30): one invalid-log window for every type of log, flexible types 4-6 without required hours or absence; 11 (v25): flexible shifts; 10 (v24): a late within the grace period is not late; 9 (v22): a lone terminal punch placed by the schedule; 6 (v16): pre-arranged overtime; 7 (v17): logs outside the shift, late capped at the shift hours; 8 (v18): day-off of the shift / masterfile on shift-only overrides
 
 /** Rebuild the unlocked days of one employee computed by an older version of the engine. Returns the number rebuilt. */
 function dtr_refresh_stale(int $empId, string $from, string $to): int
@@ -1646,13 +1677,14 @@ function dtr_hour_buckets(array $r, bool $monthlyRated): array
         case 'ordinary':
             if ($r['is_workday']) {
                 $fxT = shift_flex_type($shift);
-                if ($fxT && flex_mode($fxT) === 'rendered' && $status === 'present') {
-                    // v26 flexible kinds 4-6: only the hours rendered are hours work (no undertime is deducted)
+                if ($fxT && flex_mode($fxT) === 'rendered') {
+                    // v26 flexible kinds 4-6: only the hours rendered are hours work (no undertime is deducted);
+                    // v30: whatever the status (an unpaid leave or a day without logs adds no hours and no absence)
                     $add('hours_work', $reg);
                 } elseif (!($status === 'on_leave' && (int)($r['leave_minutes'] ?? 0) > 0)) {
                     $add('hours_work', $reqMin / 60);
                 }
-                if ($status === 'incomplete') {
+                if ($status === 'incomplete' && !($fxT && flex_mode($fxT) === 'rendered')) {
                     // unresolved incomplete / invalid day: whatever was not rendered is absent
                     $add('absent_hrs', max(0, $reqMin / 60 - $reg));
                 }

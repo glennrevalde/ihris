@@ -105,6 +105,7 @@ your HRIS database (for example `hris_web`) in phpMyAdmin and import, in order, 
 * `database/upgrade_to_v21_mysql55.sql` — flexible shifts (`shifts.flex_type`).
 * `database/upgrade_to_v22_mysql55.sql` — re-opening a closed period by the Super Admin (`period_closings.status`, `cutoff_status_before`,
   `reopened_by`, `reopened_at`, `reopen_reason`, `reopen_log`) and the ready-made **ZKTeco attlog.xlsx** configuration.
+* `database/upgrade_to_v23_mysql55.sql` — the AMS policy *# of minutes between LOGS as INVALID* (any type of log) and flexible shift types 4-6 without required hours.
 
 The scripts are written for MySQL 5.5 (no `ADD COLUMN IF NOT EXISTS`; a small stored procedure
 checks `information_schema` first), are safe to run more than once and never touch existing rows
@@ -200,6 +201,16 @@ Demo data covers **August–September 2026**: August has approved cutoffs and fi
 | Duplicate logs | `# of minutes between LOGS w/ same TYPE as INVALID` again drops only a repeat of the same log type (or of two untyped punches), so a short 15-minute break is always kept. |
 | Multi-location hours listed by Co. / Branch | Payroll Batch Transaction and Attendance Batch Transaction Entry: choosing a company / branch lists its employees **and** everyone whose multi-location entry has hours there. Their row shows only the hours of that branch (*Part of a multi-location transaction*); saving it changes that location and the total becomes the sum of the locations again. All companies lists every transaction whole. |
 | Payroll Register and payslips by branch | Payroll Batch Register → Co. / Branch: the employees of the branch plus the multi-location employees who worked there, each with only the pay earned in that branch, its share of the employer contributions and the deductions when it is the deduction source (*Branch part*). The branch totals of all branches add up to the *All* register. **Branch payslip** opens the payslip on that branch's tab. Print Payslips with a company / branch prints the branch payslip of those employees; with All, one consolidated payslip each (or split). Print and CSV export follow the same filter. |
+
+### Additions in version 30: flexible types 4-6 without required hours, one invalid-log window for every log
+
+Database version 23: open the site once (it upgrades by itself) or import `database/upgrade_to_v23_mysql55.sql` (MySQL 5.5; it renames the AMS policy and empties the required hours of the shifts of types 4-6). Daily time records are rebuilt with the new rules the first time they are shown (computation version 12); approved (locked) days are never touched. `app.js` loads as `app.js?v=33`.
+
+| Request | Where in the app |
+|---|---|
+| Flexible Shift Type 4 to 6 should have no input on "Total required duty hours"; only the hours rendered are the work hours | Shift Table → Shift type **4, 5 or 6**: the **Total required duty hours** field is hidden and emptied (also on the shifts already saved), and it is no longer required. The shift list shows *Hours rendered* in that column and the shift popup / selections say *Flexible, hours rendered*. Types 1-3, 7 and 8 still need it. |
+| The employee may render 1, 2, 3, 4 or more hours; no late, undertime or absent; free to work at his / her convenience | Every hour rendered (time in to time out, less the break of the type) is an hour of work, without a ceiling and with nothing split off as overtime: 7:00, 12:00, 1:00, 5:30 PM on type 6 = 9.50 hrs; 1:00 to 3:00 PM = 2.00 hrs; 6:00 AM to 4:00 PM on type 5 = 10.00 hrs; 8:00 to 9:00 = 1.00 hr. **No late, no undertime and no absence** in any case: a working day without logs is a day without work (*No work (free schedule)*, nothing deducted), a day with one log counts nothing and is never absent, an unpaid leave or a suspension deducts nothing. The Attendance Entry, the Attendance Summary per Employee and the payroll hours follow (a paid leave or a holiday counts the hours per day of the AMS policies). These types suit employees paid by the hour or the day. |
+| "# of minutes between LOGS w/ same TYPE as INVALID" applies to all logs within the minute restriction (Time In 07:14 and Break Out 07:17 = the same log; 07:17 invalid and not in the computation) | AMS Policies & Configuration → **# of minutes between LOGS as INVALID** (renamed): every log inside the window after the previous counted log is the same log, whatever its type, and is left out before the logs are placed; the window starts again at the next counted log. With 15 minutes, 07:14 (Time in), 07:17 (Break out), 12:16, 06:43 PM → 07:17 is invalid; the day is computed from 07:14, 12:16 and 06:43 PM. Raw Punch Logs, the day screen and the Attendance Logs listing show the left-out log as *Not counted: within 15 min of the in log of 07:14 AM, the same log*. Checked on the two months of demo data: no other day changes. |
 
 ### Additions in version 29: re-opening a closed period (Super Admin), ZKTeco attlog.xlsx import
 

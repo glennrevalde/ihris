@@ -63,7 +63,7 @@ page_header('AMS Policies & Configurations', [
       <h2>Validation &amp; night premium</h2>
       <?= settings_fields($attNight, 'form-grid cols-2') ?>
       <?= settings_fields(array_values(array_filter($config, fn($s) => in_array($s['skey'], ['ams_np_from_logs', 'ams_invalid_hours', 'ams_dup_minutes'], true))), 'form-grid cols-2') ?>
-      <p class="help">A day with more than the configured number of hours between the first and the last log is flagged as invalid. A log that follows another log of the same type inside the configured number of minutes is invalid and not counted (a double tap on the terminal); logs of different types, such as a break in after a 15-minute break, always count. The placement of the logs (Time in, Break out, Break in, Time out) follows the Logs per day of the employee's shift code, or six logs for everyone when the six-log policy above is on.</p>
+      <p class="help">A day with more than the configured number of hours between the first and the last log is flagged as invalid. The minutes window starts again at the next counted log (with 15 minutes and a time in at 07:14, the next log after 07:29 counts), and the logs it leaves out are marked Not counted on the raw log screens. The placement of the logs (Time in, Break out, Break in, Time out) follows the Logs per day of the employee's shift code, or six logs for everyone when the six-log policy above is on.</p>
     </div>
   </div>
 

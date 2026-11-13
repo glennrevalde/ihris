@@ -92,6 +92,10 @@ $day = function (array $r) use ($hpd): ?array {
             $lm = (int)$r['leave_minutes'] ?: $req;
             return ['label' => $code, 'kind' => 'leave', 'wrk' => $lm, 'net' => $lm] + $d;
         }
+        $fxL = shift_flex_type($shift);
+        if ($fxL && flex_mode($fxL) === 'rendered') {
+            return ['label' => $code, 'kind' => 'unpaid'] + $d;   // v30 flexible types 4-6: no required hours, no absence
+        }
         $abs = max((int)$r['absent_minutes'], $req);
         return ['label' => $code, 'kind' => 'unpaid', 'wrk' => $req, 'abs' => $abs, 'net' => 0] + $d;   // leave without pay
     }

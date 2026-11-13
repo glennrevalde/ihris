@@ -2198,8 +2198,15 @@
     if (note) note.hidden = t === 0;
     if (lab) lab.textContent = t > 0 ? timeIn.getAttribute('data-flex-label') : labText;
     if (timeIn) timeIn.required = t === 0;
+    // v30: flexible types 4-6 have no Total required duty hours (only the hours rendered count): the field is hidden and emptied
+    var rendered = (sel.getAttribute('data-rendered') || '').split(',').map(function (x) { return parseInt(x, 10); });
+    var isRendered = rendered.indexOf(t) >= 0;
     var req = form.querySelector('[name=required_hours]');
-    if (req) req.required = t > 0;
+    if (req) {
+      fieldOf(req).hidden = isRendered;
+      req.required = t > 0 && !isRendered;
+      if (isRendered) req.value = '';
+    }
   }
   sel.addEventListener('change', sync);
   sync();

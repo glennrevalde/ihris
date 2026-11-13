@@ -18,8 +18,8 @@ crud_page([
     'fields' => [
         'code' => ['label' => 'Code', 'required' => true],
         'name' => ['label' => 'Description', 'required' => true],
-        'flex_type' => ['label' => 'Shift type', 'type' => 'select', 'options' => SHIFT_FLEX_TYPES, 'placeholder' => null, 'wide' => true, 'attrs' => 'data-shift-type data-nobreak="3,5,7"',
-            'help' => 'Flexible: no specific time required and no late is ever computed. Types 1-3: a day below the Total required duty hours is undertime. Types 4-6: only the hours rendered are the hours work (no undertime). Types 7-8: a complete working day counts the Total required duty hours (no undertime).'],
+        'flex_type' => ['label' => 'Shift type', 'type' => 'select', 'options' => SHIFT_FLEX_TYPES, 'placeholder' => null, 'wide' => true, 'attrs' => 'data-shift-type data-nobreak="3,5,7" data-rendered="4,5,6"',
+            'help' => 'Flexible: no specific time required and no late is ever computed. Types 1-3: a day below the Total required duty hours is undertime. Types 4-6: no required hours; the employee works at his / her convenience and only the hours rendered are the hours work (no late, undertime or absence). Types 7-8: a complete working day counts the Total required duty hours (no undertime).'],
         'time_in' => ['label' => 'Time in', 'type' => 'time', 'attrs' => 'data-flex-label="Usual time in (optional)" data-flex-help="Optional on a flexible shift: the usual time in, used only to keep the logs of a night worker on the day they started (no late is computed)."'],
         'break_out1' => ['label' => 'Break out 1', 'type' => 'time', 'attrs' => 'data-fixed-only'],
         'break_in1' => ['label' => 'Break in 1', 'type' => 'time', 'attrs' => 'data-fixed-only'],
@@ -30,7 +30,7 @@ crud_page([
         'ot_out' => ['label' => 'Overtime Out', 'type' => 'time', 'help' => 'End of the pre-arranged overtime, e.g. 9:30 PM (2.5 hours). Approved automatically; late on Overtime In or out before Overtime Out is deducted, time after Overtime Out is not counted.', 'attrs' => 'data-fixed-only'],
         'logs_per_day' => ['label' => 'Logs per day (shift code)', 'type' => 'select', 'options' => ['0' => 'Auto — from the break times', '2' => '2 logs: Time in, Time out', '4' => '4 logs: Time in, Break out 1, Break in 1, Time out', '6' => '6 logs: Time in, Break out 1, Break in 1, Break out 2, Break in 2, Time out'], 'placeholder' => null,
             'help' => 'Decides which log columns are filled for employees on this shift in Attendance Entry and the import review. A flexible shift has 4 or 2 logs by its type.', 'attrs' => 'data-fixed-only'],
-        'required_hours' => ['label' => 'Total required duty hours', 'type' => 'number', 'step' => '0.01', 'help' => 'Blank = computed from the shift. Required on a flexible shift (e.g. 8).'],
+        'required_hours' => ['label' => 'Total required duty hours', 'type' => 'number', 'step' => '0.01', 'help' => 'Blank = computed from the shift. Required on a flexible shift of types 1-3, 7 and 8 (e.g. 8); types 4-6 have none.', 'attrs' => 'data-rendered-off'],
         'np_hours' => ['label' => 'Total night-premium hours', 'type' => 'number', 'step' => '0.01', 'help' => 'Blank = computed from the night window', 'attrs' => 'data-fixed-only'],
         'break_minutes' => ['label' => 'Break allowance (minutes)', 'type' => 'number', 'default' => 60, 'help' => 'Fixed shift: used when no break times are set. Flexible, 2 logs with break minutes (types 2 and 4): the minutes allocated. Flexible, 4 logs (types 1, 6 and 8): used when the break logs are missing.',
             'attrs' => 'data-flex3-off'],
@@ -52,6 +52,7 @@ crud_page([
         'break_out1' => fn($v) => h($hm($v)), 'break_in1' => fn($v) => h($hm($v)), 'break_out2' => fn($v) => h($hm($v)), 'break_in2' => fn($v) => h($hm($v)),
         'strict_time' => fn($v) => $v ? '<span class="badge badge-amber">!</span>' : '', 'whole_week' => fn($v) => $v ? '<span class="badge badge-blue">www</span>' : '',
         'flex_minutes' => fn($v) => (int)$v ? '±' . (int)$v : '',
+        'required_hours' => fn($v, $r) => shift_flex_type($r) && flex_mode(shift_flex_type($r)) === 'rendered' ? '<span class="muted">Hours rendered</span>' : h((string)$v),
         'logs_per_day' => fn($v, $r) => (int)$v ?: (!empty($r['break_out2']) ? 6 : 4),
         'ot_in' => fn($v, $r) => $v && $r['ot_out'] ? h($hm($v)) . '–' . h($hm($r['ot_out'])) . '<br><small class="muted">' . number_format(shift_ot_hours($r), 2) . ' hrs OT</small>' : '',
     ],
@@ -60,8 +61,11 @@ crud_page([
         $e = [];
         $fx = shift_flex_type(['flex_type' => $d['flex_type'] ?? 0]);
         if ($fx) {
-            // flexible shift: the required duty hours are the basis; the times of a fixed schedule do not apply
-            if ((float)($d['required_hours'] ?? 0) <= 0) {
+            // flexible shift: the required duty hours are the basis; the times of a fixed schedule do not apply.
+            // v30: types 4-6 have no required hours (only the hours rendered count)
+            if (flex_mode($fx) === 'rendered') {
+                // nothing to require
+            } elseif ((float)($d['required_hours'] ?? 0) <= 0) {
                 $e[] = 'A flexible shift needs the Total required duty hours (e.g. 8).';
             } elseif ((float)$d['required_hours'] > 24) {
                 $e[] = 'The Total required duty hours cannot be more than 24.';
@@ -112,7 +116,8 @@ crud_page([
             // a flexible shift keeps only its type, required hours, break minutes, usual time in and rest days
             update('shifts', ['time_out' => null, 'break_out1' => null, 'break_in1' => null, 'break_out2' => null, 'break_in2' => null, 'ot_in' => null, 'ot_out' => null,
                 'logs_per_day' => flex_logs($fx), 'np_hours' => null, 'flex_minutes' => 0, 'grace_minutes' => null, 'strict_time' => 0,
-                'break_minutes' => flex_break_kind($fx) === 'none' ? 0 : (int)$s['break_minutes']], 'id = ?', [$id]);
+                'break_minutes' => flex_break_kind($fx) === 'none' ? 0 : (int)$s['break_minutes']]
+                + (flex_mode($fx) === 'rendered' ? ['required_hours' => null] : []), 'id = ?', [$id]);   // v30: kinds 4-6 have no required hours
             return;
         }
         $calc = shift_computed_hours($s);

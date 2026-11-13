@@ -72,7 +72,7 @@ if ($emps) {
     $raw = rows("SELECT id, employee_id, log_time, punch_type, verify_status FROM attendance_logs
                  WHERE " . sql_in('employee_id', $ids) . " AND log_time BETWEEN ? AND ? AND verify_status <> 'rejected' ORDER BY employee_id, log_time, id",
         [add_days($from, -1) . ' 00:00:00', add_days($to, 1) . ' 23:59:59']);
-    $invalid = punch_invalid_ids($raw);   // double logs of the same type inside the AMS policy window
+    $invalid = punch_invalid_ids($raw);   // v30: logs of any type inside the AMS policy window of the previous counted log
     // the work day of each log the Daily Time Record placed (Time in, breaks, Time out, overtime logs)
     $dayOf = [];
     foreach (rows('SELECT employee_id, work_date, time_in, break_out, break_in, break_out2, break_in2, time_out, ot_in, ot_out FROM dtr

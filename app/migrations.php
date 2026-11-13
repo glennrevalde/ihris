@@ -15,7 +15,7 @@
  */
 require_once __DIR__ . '/engine/paytrans.php';
 
-const DB_VERSION = 22;
+const DB_VERSION = 23;
 
 function db_version(): int
 {
@@ -1301,10 +1301,25 @@ function migration_v22(): array
     ]];
 }
 
+/**
+ * v30 requests (database version 23): the AMS policy "# of minutes between LOGS as INVALID" applies to every log inside
+ * the window, whatever its type (Time in 07:14 and Break out 07:17 with 15 minutes: 07:17 is the same log and is not
+ * counted), so its label and help say so; and flexible shift types 4-6 have no Total required duty hours (only the hours
+ * rendered count, no late, undertime or absence), so the required hours of those shifts are emptied.
+ */
+function migration_v23(): array
+{
+    $q = fn($v) => "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], (string)$v) . "'";
+    return ['tables' => [], 'columns' => [], 'modify' => [], 'settings' => [], 'seeds' => [], 'data' => [
+        "UPDATE settings SET label = " . $q('# of minutes between LOGS as INVALID') . ", help = " . $q('Every log inside this many minutes after the previous counted log is the same log and is not counted, whatever its type: with 15, a Time in at 07:14 and a Break out at 07:17 = one log at 07:14.') . " WHERE skey = 'ams_dup_minutes'",
+        "UPDATE shifts SET required_hours = NULL WHERE flex_type IN (4, 5, 6)",
+    ]];
+}
+
 /** Every upgrade step in order: version => definitions. */
 function migrations_all(): array
 {
-    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21', 22 => 'migration_v22'];
+    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21', 22 => 'migration_v22', 23 => 'migration_v23'];
 }
 
 function mig_table_exists(string $t): bool
@@ -1476,7 +1491,8 @@ function db_upgrade_sql(int $version = DB_VERSION): string
         '19' => 'Attendance record report import (JJM Logs) and the minimum minutes between logs',
         '20' => 'NBJ Logs import configuration and the other biometric IDs of an employee',
         '21' => 'flexible shifts: 4 logs, 2 logs with break minutes, 2 logs without a break',
-        '22' => 'Super Admin re-opening of closed periods, ZKTeco attlog.xlsx import configuration'][(string)$version] ?? '';
+        '22' => 'Super Admin re-opening of closed periods, ZKTeco attlog.xlsx import configuration',
+        '23' => 'invalid-log window for every type of log, flexible shift types 4-6 without required hours'][(string)$version] ?? '';
     $q = fn($v) => $v === null ? 'NULL' : "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], (string)$v) . "'";
     $out = [];
     $out[] = "-- =====================================================================";
