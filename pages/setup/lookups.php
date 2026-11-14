@@ -159,7 +159,7 @@ if (!isset($defs[$route])) {
     throw new RuntimeException('Unknown setup table.');
 }
 $cfg = $defs[$route];
-if (in_array($route, ['locations', 'jobs', 'fixed_trans_codes'], true)) {
+if (in_array($route, ['locations', 'jobs', 'fixed_trans_codes', 'emp_groups'], true)) {   // v33: Employee Group Table
     $cfg['import'] = $route;   // CSV import facility on the form
 }
 if (empty($cfg['before_delete'])) {

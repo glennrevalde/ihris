@@ -2141,6 +2141,7 @@ return [
     'Resolving does not recompute anything. The period has to be summarised again for the open count to fall.',
     'The tardiness monitor counts only ordinary working days where the employee was present and late beyond the grace period.',
     'The employees over the habitual tardiness limits of the month are also listed in the To-do\'s of the dashboard of their immediate superior and of HR.',
+    'Filters Company, Branch, Employee Group and Department narrow the open exceptions and the tardiness monitor to the employees of the selection (Branch, Employee Group and Department take one, two or more values; a department includes the units under it). The selection is shown under the filters and kept when the month of the tardiness monitor changes.',
 ],
 'tips' => [
     'The monitor is always a calendar-month view of everyone and ignores the cutoff filter.',
@@ -2171,6 +2172,7 @@ return [
     'Unticked, a manually encoded transaction is kept as typed; ticked, it is replaced by the processed attendance and is marked as coming from attendance.',
     'Every processing is recorded in the audit trail with the period, the employees and the option chosen.',
     'A period where some companies / branches are already closed can still be processed: the closed transactions are not touched, the open employees are processed.',
+    'Company Code takes one, two or more companies / branches: open it, tick the companies (Find narrows a long list) and press Done, then Apply. Nothing ticked = all companies. The companies chosen are shown in the Process panel and recorded in the audit trail.',
 ],
 'related' => ['att_generate', 'att_entry', 'cutoff_view', 'att_exceptions'],
 ],
@@ -3313,6 +3315,7 @@ return [
 'rules' => [
     'With two or more companies / branches chosen, an employee who worked in several of them has one line per company / branch chosen (the part of each); the totals of all the companies / branches add up to the whole run.',
     'In the summary by Co. / Branch, a multi-location employee counts in each company / branch for the part of the pay earned there (with a Co. / Branch filter) and is counted once in the employees of each line; the lines always add up to the grand total.',
+    'On screen the Emp. no. and Employee name columns (the Totals by columns of the summary) stay frozen at the left when the register is scrolled sideways, in the Payroll Batch Register and in Register II, so the name of the employee is always beside the rightmost columns. The department of the sub-totals stays in view too. The printed register is unchanged.',
 ],
 'related' => ['rpt_register', 'payroll_run', 'payslips_print', 'trans_multiloc'],
 ],
@@ -3503,6 +3506,7 @@ return [
     'A re-opened closing stays in Closed periods, marked Re-opened with who and when; its report prints the reason and what was reversed. Closing the period again makes a new closing number.',
     'The next payroll of the pay code cannot be processed until the previous period is closed.',
     'Every closing is recorded in the audit trail with its totals.',
+    'Closing asks twice. After the first confirmation, a second message explains that Payroll Closing is the final process of the payroll period: the payroll computation can no longer be edited, and all transactions are posted as the final output. Tick I understand and press Yes, close the period; Cancel leaves the period open. The server refuses a closing without this second confirmation.',
 ],
 'related' => ['payroll_run', 'payroll_runs', 'ledgers', 'emp_transactions'],
 ],
@@ -3728,6 +3732,7 @@ return [
     'Only open payroll periods are offered. When a period is closed (Period Closing), its figures are reported in the Monthly Reports.',
     'The employer share is never shown here.',
     'The selection of the form (company / branch, organizational unit, group, class, type, employees, code) is shown under the result and on the printed report.',
+    'Withholding Tax Report: tick Do not show zero tax withheld to list only the employees with tax withheld (also in the Monthly and YTD Reports; in the detail per payroll period the periods without tax are left out). The option is shown in the Selection line and on the printed report.',
 ],
 'fields' => [
     ['AUL Transaction Listing / AUL Frequency Listing', 'The absences, lates and undertime of the open payroll period selected: the amounts deducted (AUL Transaction Listing) or the number of times (AUL Frequency Listing).'],
@@ -4160,6 +4165,7 @@ return [
     'A row assigned to employees cannot be deleted. The system says how many and asks you to reassign them or deactivate the row.',
     'The employee type and employee group tables can each have a default row, which new employees receive.',
     'Employee Group Table, Active: Yes or No. An employee group set to No is no longer shown in the reports and transactions (the Employee group filters and selections); the employees already in it keep it.',
+    'Employee Group Table, Import from CSV / Excel (under the table): download the format, fill it (Code, Employee group description, Log / Grp Y or N, Cost center, Active Yes or No) and press Load and check. The rows are shown in a grid before anything is saved: correct a wrong cell on the screen, tick Remove on a row that should not be imported, press Check data again, then Save to database. A code that already exists is updated (blank cells keep the current value), a new code is added.',
 ],
 'tips' => [
     'The conversion factor on the employee type is what decides the daily and hourly rates. Getting it wrong shifts every overtime and absence amount.',

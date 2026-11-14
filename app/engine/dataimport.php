@@ -113,6 +113,43 @@ function dimp_read(string $path, array $cols, array $alias = []): array
     return ['rows' => $rows, 'unknown' => $unknown];
 }
 
+/**
+ * v33: the first worksheet of an Excel file (.xlsx or .xls) written as a temporary CSV, so every import reads
+ * it like the CSV of the same format (dates may stay Excel serial numbers: the checks accept them).
+ */
+function dimp_excel_to_csv(string $path): string
+{
+    if (!function_exists('grid_read_file')) {
+        require_once __DIR__ . '/xlsgrid.php';
+    }
+    try {
+        $grid = grid_read_file($path, 0);
+    } catch (Throwable $e) {
+        throw new RuntimeException('The Excel file cannot be read: ' . $e->getMessage() . ' Save it as CSV and load that file.');
+    }
+    if (!$grid) {
+        throw new RuntimeException('The first worksheet of the Excel file is empty.');
+    }
+    ksort($grid);
+    $width = 0;
+    foreach ($grid as $cells) {
+        $width = max($width, $cells ? max(array_keys($cells)) + 1 : 0);
+    }
+    $out = tempnam(sys_get_temp_dir(), 'dimp');
+    $fh = fopen($out, 'w');
+    $last = max(array_keys($grid));
+    for ($r = 0; $r <= $last; $r++) {
+        $line = [];
+        for ($c = 0; $c < $width; $c++) {
+            $line[] = (string)($grid[$r][$c] ?? '');
+        }
+        fputcsv($fh, $line, ',', '"', '\\');
+    }
+    fclose($fh);
+    register_shutdown_function(fn() => @unlink($out));
+    return $out;
+}
+
 /** Status and counters after a check: error, new, update, skip. */
 function dimp_finalize(array &$rows): array
 {
@@ -187,6 +224,14 @@ function dimp_match_option(string $v, array $options)
             return $k;
         }
     }
+    // v33: Y / N for a Yes / No choice (Active of the Employee Group Table)
+    if ($lv === 'y' || $lv === 'n') {
+        foreach ($options as $k => $lbl) {
+            if (mb_strtolower((string)$lbl) === ($lv === 'y' ? 'yes' : 'no')) {
+                return $k;
+            }
+        }
+    }
     // a unique beginning of a label ("verbal" = Verbal Warning)
     if (mb_strlen($lv) >= 3) {
         $hits = array_keys(array_filter($options, fn($lbl) => mb_strpos(mb_strtolower((string)$lbl), $lv) === 0));
@@ -250,6 +295,7 @@ function dimp_registry(): array
         // Company Parameters Setup (crud tables)
         'branches' => ['Company Table', 'branches', 'crud', 'setup', 'companies and branches (employers of record) with their government employer numbers, signatories, bank and geofence. Rows are matched on the unique short code.'],
         'locations' => ['Location Table', 'locations', 'crud', 'setup', 'work locations. Rows are matched on the code.'],
+        'emp_groups' => ['Employee Group Table', 'emp_groups', 'crud', 'setup', 'employee groups with the Log / Grp flag, cost center and Active. Rows are matched on the code: an existing code is updated, a new code is added.'],
         'jobs' => ['Job Table', 'jobs', 'crud', 'setup', 'job titles with category, sub-category and the OT/OL flag. Rows are matched on the code.'],
         'shifts' => ['Shift Table', 'shifts', 'crud', 'ams', 'shift definitions: times in and out, breaks, logs per day, required hours, rest days. Rows are matched on the shift code.'],
         'earning_types' => ['Transaction Table (earnings)', 'earning_types', 'crud', 'payroll', 'earning transaction codes with their tax treatment and GL code. Rows are matched on the transaction code.'],
@@ -1520,13 +1566,17 @@ function dimp_handle(array $def): void
     try {
         if ($act === 'import_load') {
             if (empty($_FILES['dimp_file']['tmp_name']) || !is_uploaded_file($_FILES['dimp_file']['tmp_name'])) {
-                throw new RuntimeException('Choose the CSV file first.');
+                throw new RuntimeException('Choose the CSV or Excel file first.');
             }
             $ext = strtolower((string)pathinfo((string)$_FILES['dimp_file']['name'], PATHINFO_EXTENSION));
-            if (!in_array($ext, ['csv', 'txt'], true)) {
-                throw new RuntimeException('Save the spreadsheet as CSV (comma separated) and load that file.');
+            if (!in_array($ext, ['csv', 'txt', 'xlsx', 'xls'], true)) {
+                throw new RuntimeException('Load a CSV (comma separated) or an Excel (.xlsx / .xls) file.');
             }
-            $read = !empty($def['read']) ? ($def['read'])((string)$_FILES['dimp_file']['tmp_name']) : dimp_read((string)$_FILES['dimp_file']['tmp_name'], $def['columns'], $def['alias']);
+            $src = (string)$_FILES['dimp_file']['tmp_name'];
+            if (in_array($ext, ['xlsx', 'xls'], true)) {
+                $src = dimp_excel_to_csv($src);   // v33: the first worksheet of an Excel file, read like a CSV
+            }
+            $read = !empty($def['read']) ? ($def['read'])($src) : dimp_read($src, $def['columns'], $def['alias']);
             if (!$read['rows']) {
                 throw new RuntimeException('The file has the headers but no data row.');
             }
@@ -1654,7 +1704,7 @@ function dimp_panel(array $def): string
     if (!$loaded): ?>
 <section class="card dimp" id="dimp-<?= h($kind) ?>">
   <div class="dimp-head">
-    <div class="dimp-title"><span class="dimp-ico" aria-hidden="true"><?= icon('upload') ?></span><div><h2>Import from CSV</h2><div class="sub">Loads <?= h($def['what']) ?> The file is checked first; nothing is saved until every row is valid.</div></div></div>
+    <div class="dimp-title"><span class="dimp-ico" aria-hidden="true"><?= icon('upload') ?></span><div><h2>Import from CSV / Excel</h2><div class="sub">Loads <?= h($def['what']) ?> The file is checked first; nothing is saved until every row is valid.</div></div></div>
     <div class="dimp-links">
       <a class="btn btn-sm" href="<?= $dl('format') ?>">Download format</a>
       <?php if ($def['export']): ?><a class="btn btn-sm" href="<?= $dl('export') ?>"><?= h($def['export_label'] ?? 'Current data (CSV)') ?></a><?php endif; ?>
@@ -1662,7 +1712,7 @@ function dimp_panel(array $def): string
   </div>
   <form method="post" enctype="multipart/form-data" class="dimp-load">
     <?= csrf_field() ?><input type="hidden" name="_dimp" value="<?= h($kind) ?>">
-    <label class="dimp-file"><span>CSV file</span><input type="file" name="dimp_file" accept=".csv,.txt,text/csv" required></label>
+    <label class="dimp-file"><span>CSV or Excel file</span><input type="file" name="dimp_file" accept=".csv,.txt,.xlsx,.xls,text/csv" required></label>
     <?= $optHtml() ?>
     <button class="btn btn-primary" name="_action" value="import_load">Load and check</button>
   </form>
@@ -1693,7 +1743,7 @@ function dimp_panel(array $def): string
 ?>
 <section class="card dimp is-loaded" id="dimp-<?= h($kind) ?>">
   <div class="dimp-head">
-    <div class="dimp-title"><span class="dimp-ico" aria-hidden="true"><?= icon('upload') ?></span><div><h2>Import from CSV: <?= h(mb_strimwidth((string)$S['file'], 0, 48, '…')) ?></h2>
+    <div class="dimp-title"><span class="dimp-ico" aria-hidden="true"><?= icon('upload') ?></span><div><h2>Import: <?= h(mb_strimwidth((string)$S['file'], 0, 48, '…')) ?></h2>
       <div class="sub"><?= number_format($c['total']) ?> row(s): <strong class="<?= $c['error'] ? 'text-bad' : 'text-good' ?>"><?= $c['error'] ? number_format($c['error']) . ' with errors' : 'all valid' ?></strong><?= $parts ? ', ' . h(implode(', ', $parts)) : '' ?>.</div></div></div>
     <div class="dimp-links">
       <?php if (!empty($c['error'])): ?><a class="btn btn-sm" href="<?= $dl('errors') ?>">Error report (CSV)</a><?php endif; ?>

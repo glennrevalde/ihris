@@ -1075,6 +1075,59 @@
   refresh();
 })();
 
+/* v33: payroll register: Emp. no. and Employee name stay frozen at the left when scrolled sideways.
+   The left offset of each frozen column (fz1, fz2 ...) is the width of the frozen columns before it, and
+   the second header row sits under the first; both are measured again when the register changes size. */
+(function () {
+  'use strict';
+  var tables = Array.prototype.slice.call(document.querySelectorAll('.reg-screen table.reg'));
+  tables.forEach(function (t) {
+    function measure() {
+      var left = 0, i = 1, cell;
+      while ((cell = t.querySelector('thead .fz' + i))) {
+        t.style.setProperty('--fz' + i, left + 'px');
+        left += cell.getBoundingClientRect().width;
+        i++;
+      }
+      var first = t.querySelector('thead tr:first-child th:not([rowspan])') || t.querySelector('thead tr:first-child th');
+      if (first) t.style.setProperty('--reg-h1', first.getBoundingClientRect().height + 'px');
+      var wrap = t.closest('.table-scroll, .table-wrap');
+      if (wrap) t.classList.toggle('is-scrolled', wrap.scrollLeft > 0);
+    }
+    var wrap = t.closest('.table-scroll, .table-wrap');
+    if (wrap) wrap.addEventListener('scroll', function () { t.classList.toggle('is-scrolled', wrap.scrollLeft > 0); }, { passive: true });
+    if (window.ResizeObserver) new ResizeObserver(measure).observe(t);
+    t.addEventListener('dblclick', function () { setTimeout(measure, 0); });
+    window.addEventListener('resize', measure);
+    measure();
+  });
+})();
+
+/* v33: Period Closing in two messages: the first confirmation, then the final warning (closing is the final
+   process: the computation can no longer be edited and every transaction is posted as the final output). */
+(function () {
+  'use strict';
+  var btn = document.querySelector('[data-close-step]');
+  var modal = document.getElementById('closeFinal');
+  if (!btn || !modal) return;
+  var form = btn.form || document.getElementById('closeForm');
+  var check = modal.querySelector('[data-final-check]'), go = modal.querySelector('[data-final-go]');
+  btn.addEventListener('click', function () {
+    if (form && !form.reportValidity()) return;
+    if (!window.confirm(btn.getAttribute('data-first'))) return;
+    check.checked = false; go.disabled = true;
+    modal.classList.add('open');
+    setTimeout(function () { check.focus(); }, 50);
+  });
+  check.addEventListener('change', function () { go.disabled = !check.checked; });
+  go.addEventListener('click', function () {
+    if (!check.checked) return;
+    form.querySelector('[data-final-ack]').value = '1';
+    go.disabled = true; btn.disabled = true;
+    form.submit();
+  });
+})();
+
 /* v32: salary restriction picker (User Access & Permissions) */
 (function () {
   'use strict';

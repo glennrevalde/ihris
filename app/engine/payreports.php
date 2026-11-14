@@ -59,6 +59,7 @@ function prpt_filters(): array
     $f['emp_from'] = trim((string)get('emp_from', '')) ?: null;
     $f['emp_to'] = trim((string)get('emp_to', '')) ?: null;
     $f['code'] = trim((string)get('code', '')) ?: null;
+    $f['no_zero_tax'] = get('no_zero_tax') ? 1 : null;   // v33: Withholding Tax Report, employees with tax withheld only
     return $f;
 }
 
@@ -387,6 +388,7 @@ function prpt_build(string $type, array $items, array $opt = []): array
     $withEr = !empty($opt['with_er']);
     $detail = ($opt['mode'] ?? 'summary') === 'detail';
     $code = $opt['code'] ?? null;
+    $noZeroTax = $type === 'wtax' && !empty($opt['no_zero_tax']);   // v33: "Do not show zero tax withheld"
     $cols = prpt_columns($type, $withEr);
     $numCols = array_keys(array_filter($cols, fn($c) => $c[1] !== 'txt'));
     $lines = prpt_lines($items);
@@ -423,7 +425,7 @@ function prpt_build(string $type, array $items, array $opt = []): array
                     $e['tot'][$k] += (float)($v[$k] ?? 0);
                 }
             }
-            if ($detail) {
+            if ($detail && !($noZeroTax && abs((float)($v['tax'] ?? 0)) < 0.005)) {
                 $v['period'] = $period;
                 $e['lines'][] = $v;
             }
@@ -438,6 +440,9 @@ function prpt_build(string $type, array $items, array $opt = []): array
         foreach ($list as $eid => $e) {
             if (($listing && !$e['lines']) || (!$listing && !array_filter($e['tot'], fn($x) => abs($x) > 0.0001) && !in_array($type, ['bank', 'cash'], true))) {
                 continue;
+            }
+            if ($noZeroTax && abs((float)($e['tot']['tax'] ?? 0)) < 0.005) {
+                continue;   // no tax withheld: left out
             }
             $e['tot'] = array_map(fn($x) => round($x, 2), $e['tot']);
             [$co, $br, $unit] = explode("\x1f", $gk);

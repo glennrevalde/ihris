@@ -90,6 +90,10 @@ if (is_post() && post('_action') === 'reopen') {
 
 if (is_post()) {
     try {
+        // v33: the second message (final process) must have been acknowledged
+        if (post('final_ack') !== '1') {
+            throw new RuntimeException('Confirm the final warning to close the period: closing is the final process of the payroll period.');
+        }
         $id = closing_execute((int)post('cutoff_id'), ['branch_id' => (int)post('branch_id') ?: null, 'employee_group_id' => (int)post('employee_group_id') ?: null,
             'employee_type_id' => (int)post('employee_type_id') ?: null], post('backup_done') === '1');
         $pc = row('SELECT * FROM period_closings WHERE id = ?', [$id]);
@@ -162,13 +166,13 @@ page_header('Period Closing / Payroll Closing', [
       <?php endif; ?>
     </fieldset>
 
-    <form method="post" class="closing-actions">
-      <?= csrf_field() ?><input type="hidden" name="_action" value="close">
+    <form method="post" class="closing-actions" id="closeForm">
+      <?= csrf_field() ?><input type="hidden" name="_action" value="close"><input type="hidden" name="final_ack" value="" data-final-ack>
       <?php foreach (['cutoff_id' => $cutId] + $f as $k => $v): ?><input type="hidden" name="<?= $k ?>" value="<?= h((string)$v) ?>"><?php endforeach; ?>
       <label class="check"><input type="checkbox" name="backup_done" value="1" required<?= $canClose ? '' : ' disabled' ?>> A backup of the database was made</label>
       <span class="spacer"></span>
       <a class="btn" href="<?= url('dashboard') ?>">Exit</a>
-      <button class="btn btn-primary" data-confirm="Close this period? It posts to the employee ledgers and locks the period; only the Super Admin can re-open it."<?= $canClose ? '' : ' disabled' ?>>Close</button>
+      <button type="button" class="btn btn-primary" data-close-step data-first="Close this period? It posts to the employee ledgers and locks the period; only the Super Admin can re-open it."<?= $canClose ? '' : ' disabled' ?>>Close</button>
     </form>
   </div>
 
@@ -210,6 +214,26 @@ page_header('Period Closing / Payroll Closing', [
     </div>
   </div>
 </div>
+
+<?php if ($canClose): ?>
+<div class="modal" id="closeFinal"><div class="modal-box closing-final" role="alertdialog" aria-labelledby="closeFinalTitle">
+  <div class="closing-final-head">
+    <span class="closing-final-ico" aria-hidden="true">!</span>
+    <div><h2 id="closeFinalTitle">Payroll Closing is the final process of the payroll period</h2>
+      <p class="muted small"><?= h($cut['pay_group_code'] . ' ' . pt_period_label($cut, false)) ?>, <?= (int)$pv['totals']['employees'] ?> employee(s), net pay <?= money($pv['totals']['net']) ?></p></div>
+  </div>
+  <ul class="closing-final-list">
+    <li>The <strong>payroll computation can no longer be edited</strong>: the payroll runs, payroll transactions, attendance and adjustments of this period are locked.</li>
+    <li><strong>All transactions are posted as the final output</strong>: salaries, loan and installment payments, government deductions, taxes, the 13th month accrual and the leave credits go to the employee ledgers and the reports.</li>
+    <li>Only the Super Admin can re-open a closed period, and only the latest closing of a pay code.</li>
+  </ul>
+  <label class="check closing-final-ack"><input type="checkbox" data-final-check> I understand that closing is final and the payroll of this period can no longer be edited.</label>
+  <div class="form-actions">
+    <button type="button" class="btn btn-primary" data-final-go disabled>Yes, close the period</button>
+    <button type="button" class="btn" data-modal-close>Cancel</button>
+  </div>
+</div></div>
+<?php endif; ?>
 
 <?php foreach ($modals as $hc): ?>
 <div class="modal" id="reopen<?= (int)$hc['id'] ?>"><div class="modal-box">

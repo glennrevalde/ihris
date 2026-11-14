@@ -84,7 +84,7 @@ if ($menu === 'monthly' && $scope) {
             : 'Employer share not computed: no closed payroll period in this month yet.';
     }
 }
-$rep = prpt_build($type, $items, ['with_er' => $withEr, 'mode' => $mode, 'code' => $f['code']]);
+$rep = prpt_build($type, $items, ['with_er' => $withEr, 'mode' => $mode, 'code' => $f['code'], 'no_zero_tax' => $f['no_zero_tax']]);
 $keep = array_filter(array_merge(['type' => $type, 'mode' => $menu === 'ytd' ? $mode : null, 'cutoff_id' => $scope['period'] ?? null, 'month' => $scope['month'] ?? null,
     'from' => $scope['from'] ?? null, 'to' => $scope['to'] ?? null, 'run_id' => $scope['run'] ?? null], $f), fn($v) => $v !== null && $v !== '');
 
@@ -117,6 +117,7 @@ if ($f['emp_from'] || $f['emp_to']) {
 if ($f['code']) {
     $filterText[] = 'Code ' . $f['code'];
 }
+$selExtra = $f['no_zero_tax'] && $type === 'wtax' ? ['Tax withheld' => 'employees with tax withheld only (zero tax not shown)'] : [];   // v33
 
 if (get('print')) {
     audit('reports', 'print_' . $menu . '_' . $type, 'report', null, $keep);
@@ -124,7 +125,7 @@ if (get('print')) {
     echo company_letterhead($f['branch_id'] ? row('SELECT * FROM branches WHERE id = ?', [$f['branch_id']]) : null);
     echo '<h1>' . h($title) . '</h1>';
     echo '<div class="doc-meta"><div><strong>' . h($scopeLabel) . '</strong>' . ($menu === 'ytd' ? ', ' . ($mode === 'detail' ? 'detail per payroll period' : 'summary per employee') : '') . '</div>'
-        . '<div>Printed ' . h(fmt_dt(now())) . '</div></div>' . report_selection_html($f, [], true) . salary_restricted_note('', true);
+        . '<div>Printed ' . h(fmt_dt(now())) . '</div></div>' . report_selection_html($f, $selExtra, true) . salary_restricted_note('', true);
     if ($note) {
         echo '<p class="small"><em>' . h($note) . '</em></p>';
     }
@@ -177,6 +178,9 @@ echo salary_restricted_note('these reports');   // v32
   <?php if (in_array($type, ['deductions', 'earnings', 'sss_loan', 'hdmf_loan'], true)): ?>
     <label>Trans. code<input name="code" value="<?= h((string)$f['code']) ?>" placeholder="All codes" style="width:130px"></label>
   <?php endif; ?>
+  <?php if ($type === 'wtax'): ?>
+    <label class="check prpt-nozero"><input type="checkbox" name="no_zero_tax" value="1" <?= checked((bool)$f['no_zero_tax']) ?>> Do not show zero tax withheld</label>
+  <?php endif; ?>
   <?php if ($menu === 'ytd'): ?>
     <fieldset class="seg-field"><legend>Report type</legend><div class="seg">
       <label class="check"><input type="radio" name="mode" value="detail" <?= checked($mode === 'detail') ?>> Detail</label>
@@ -199,7 +203,7 @@ echo salary_restricted_note('these reports');   // v32
 
 <div class="card flush prpt-card">
   <div class="card-head pad">
-    <div><h2><?= h($title) ?></h2><div class="sub"><?= h($scopeLabel) ?>, <?= (int)$rep['employees'] ?> employee(s)</div><?= report_selection_html($f) ?></div>
+    <div><h2><?= h($title) ?></h2><div class="sub"><?= h($scopeLabel) ?>, <?= (int)$rep['employees'] ?> employee(s)</div><?= report_selection_html($f, $selExtra) ?></div>
     <?php if (!$rep['detail'] && $rep['employees'] > 8): ?><input type="search" class="table-search" data-target="prptTbl" placeholder="Find employee…" style="max-width:240px"><?php endif; ?>
   </div>
   <div class="pad-x prpt-body"><?= prpt_html($rep, 'prptTbl') ?></div>

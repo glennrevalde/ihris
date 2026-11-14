@@ -9,6 +9,8 @@
  * import) is replaced by the newly processed attendance; otherwise it is kept. A transaction already
  * closed for payroll is never touched (re-open it in Attendance Transaction Closing first). Only open
  * payroll periods are offered.
+ *
+ * v33: Company Code takes one, two or more companies / branches (nothing ticked = all companies).
  */
 $pgId = (int)get('pay_group_id', 0) ?: (int)val("SELECT pay_group_id FROM attendance_cutoffs WHERE status IN ('open','summarized','approved') ORDER BY period_end DESC LIMIT 1");
 $periods = [];
@@ -21,7 +23,7 @@ if (!isset($periods[$cid])) {
     $cid = (int)(array_key_first($periods) ?? 0);
 }
 $period = $cid ? pt_period($cid) : null;
-$f = ['branch_id' => (int)get('branch_id', 0) ?: null, 'org_unit_id' => (int)get('org_unit_id', 0) ?: null, 'employee_group_id' => (int)get('employee_group_id', 0) ?: null,
+$f = ['branch_id' => id_list(get('branch_id')) ?: null, 'org_unit_id' => (int)get('org_unit_id', 0) ?: null, 'employee_group_id' => (int)get('employee_group_id', 0) ?: null,
     'employee_type_id' => (int)get('employee_type_id', 0) ?: null, 'q' => ''];
 $keep = array_filter(['pay_group_id' => $pgId ?: null, 'cutoff_id' => $cid ?: null] + $f);
 
@@ -33,9 +35,10 @@ if (is_post()) {
             throw new RuntimeException('Choose an open payroll period.');
         }
         $pf = [];
-        foreach (['branch_id', 'org_unit_id', 'employee_group_id', 'employee_type_id'] as $k) {
+        foreach (['org_unit_id', 'employee_group_id', 'employee_type_id'] as $k) {
             $pf[$k] = (int)post('f_' . $k) ?: null;
         }
+        $pf['branch_id'] = id_list(post('f_branch_id')) ?: null;   // v33: one, two or more companies
         $all = array_map(fn($e) => (int)$e['id'], pt_period_employees($p, $pf));
         $scope = post('emp_scope') === 'select' ? 'select' : 'all';
         $ids = $scope === 'select' ? array_values(array_intersect($all, array_map('intval', (array)post('emp_ids', [])))) : $all;
@@ -47,7 +50,7 @@ if (is_post()) {
         $st = summarize_cutoff($pid, $replace, $ids);
         $manualReplaced = $replace ? count(array_filter($before, fn($s) => $s === 'manual')) : 0;
         $closed = count(array_filter($before, fn($s) => strpos($s, ':closed') !== false));
-        audit('ams', 'process_attendance', 'attendance_cutoffs', $pid, ['employees' => count($ids), 'scope' => $scope, 'replace_manual' => $replace ? 1 : 0,
+        audit('ams', 'process_attendance', 'attendance_cutoffs', $pid, ['employees' => count($ids), 'scope' => $scope, 'companies' => $pf['branch_id'] ?: 'all', 'replace_manual' => $replace ? 1 : 0,
             'processed' => $st['employees'], 'manual_replaced' => $manualReplaced, 'kept' => $st['manual_kept']]);
         flash('success', sprintf('Attendance processed for %d employee(s)%s.%s%s', $st['employees'],
             $replace ? ', ' . $manualReplaced . ' manual entr' . ($manualReplaced === 1 ? 'y' : 'ies') . ' replaced by the processed attendance' : '',
@@ -59,7 +62,7 @@ if (is_post()) {
     } catch (RuntimeException $e) {
         flash('error', $e->getMessage());
     }
-    redirect('att_process', array_filter(['pay_group_id' => (int)post('pay_group_id') ?: null, 'cutoff_id' => $pid ?: null, 'branch_id' => (int)post('f_branch_id') ?: null,
+    redirect('att_process', array_filter(['pay_group_id' => (int)post('pay_group_id') ?: null, 'cutoff_id' => $pid ?: null, 'branch_id' => id_list(post('f_branch_id')) ?: null,
         'org_unit_id' => (int)post('f_org_unit_id') ?: null, 'employee_group_id' => (int)post('f_employee_group_id') ?: null, 'employee_type_id' => (int)post('f_employee_type_id') ?: null]));
 }
 
@@ -78,7 +81,7 @@ page_header('Process Attendance', [
   <input type="hidden" name="p" value="att_process">
   <label>Pay Code<select name="pay_group_id" data-autosubmit><?= options(pairs("SELECT id, CONCAT(code, ' — ', name) FROM pay_groups ORDER BY code"), $pgId ?: null, 'All pay codes') ?></select></label>
   <label class="grow">Period<select name="cutoff_id" data-autosubmit><?= options($periods, $cid ?: null, $periods ? null : 'No open payroll period') ?></select></label>
-  <label>Company Code<select name="branch_id"><?= options(pairs("SELECT id, CONCAT(COALESCE(branch_code, code), ' — ', name) FROM branches WHERE is_active = 1 ORDER BY company_code, branch_code, code"), $f['branch_id'], 'All companies') ?></select></label>
+  <?= multi_pick('branch_id', 'Company Code', pairs("SELECT id, CONCAT(COALESCE(branch_code, code), ' — ', name) FROM branches WHERE is_active = 1 ORDER BY company_code, branch_code, code"), $f['branch_id'], 'All companies') ?>
   <label>Department<select name="org_unit_id"><?= options(org_unit_options(), $f['org_unit_id'], 'All departments') ?></select></label>
   <label>Employee Group<select name="employee_group_id"><?= options(emp_group_options(), $f['employee_group_id'], 'All groups') ?></select></label>
   <label>Employee Type<select name="employee_type_id"><?= options(pairs("SELECT id, CONCAT(code, ' — ', name) FROM emp_types ORDER BY code"), $f['employee_type_id'], 'All types') ?></select></label>
@@ -92,7 +95,8 @@ page_header('Process Attendance', [
 <form method="post" id="procForm">
   <?= csrf_field() ?>
   <input type="hidden" name="cutoff_id" value="<?= (int)$cid ?>"><input type="hidden" name="pay_group_id" value="<?= (int)$pgId ?>">
-  <?php foreach (['branch_id', 'org_unit_id', 'employee_group_id', 'employee_type_id'] as $k): ?><input type="hidden" name="f_<?= $k ?>" value="<?= h((string)($f[$k] ?? '')) ?>"><?php endforeach; ?>
+  <?php foreach (['org_unit_id', 'employee_group_id', 'employee_type_id'] as $k): ?><input type="hidden" name="f_<?= $k ?>" value="<?= h((string)($f[$k] ?? '')) ?>"><?php endforeach; ?>
+  <?php foreach ($f['branch_id'] ?: [] as $b): ?><input type="hidden" name="f_branch_id[]" value="<?= (int)$b ?>"><?php endforeach; ?>
   <div class="grid grid-2-1">
     <div class="card flush">
       <div class="card-head pad">
@@ -131,6 +135,7 @@ page_header('Process Attendance', [
         <dl class="kv">
           <dt>Pay code</dt><dd><?= h($period['pay_group_code'] . ' — ' . $period['pay_group_name']) ?></dd>
           <dt>Period</dt><dd><?= h(fmt_date($period['period_start'])) ?> – <?= h(fmt_date($period['period_end'])) ?></dd>
+          <dt>Companies</dt><dd><?= h(multi_pick_text(pairs("SELECT id, COALESCE(branch_code, code) FROM branches"), $f['branch_id'], 'All companies')) ?></dd>
           <dt>Manual entries</dt><dd><?= $nManual ?> in the selection</dd>
         </dl>
         <div class="replace-box">

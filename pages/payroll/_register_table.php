@@ -12,6 +12,9 @@
  *
  * v22 Totals / Summary only: when $summary (register_summary()) is given, the lines are the totals of each
  * Co. / Branch, Department, Employee group and / or Employee type chosen instead of the employees.
+ *
+ * v33: on screen the Emp. no. and Employee name columns (the dimension columns of the summary) stay frozen
+ * at the left while the register is scrolled sideways (classes fz / fzN / fz-last, see app.css and app.js).
  */
 $summary = $summary ?? null;
 $sumDims = $summary ? register_summary_dims() : [];
@@ -31,6 +34,8 @@ $cell = function (float $v) {
     return $v ? number_format($v, 2) : '';
 };
 $money = fn($v) => number_format((float)$v, 2);
+/** v33: class of a frozen column ($i from 1, $n = number of frozen columns). */
+$fz = fn(int $i, int $n) => 'fz fz' . $i . ($i === $n ? ' fz-last' : '');
 /** Earnings (or deductions) cells of a row: the register columns, with the Others details right after Others. */
 $cells = function (array $r, string $g, bool $isTotal) use ($colsE, $colsD, $othE, $othD, $othC, $cell, $money) {
     $cols = $g === 'e' ? $colsE : $colsD;
@@ -60,13 +65,13 @@ $cells = function (array $r, string $g, bool $isTotal) use ($colsE, $colsD, $oth
     }
     return $html;
 };
-$renderRow = function (array $r) use ($cells, $print) {
+$renderRow = function (array $r) use ($cells, $print, $fz) {
     $it = $r['item'];
     $part = $r['part'] ?? null;
     $cls = trim(($print ? '' : 'clickable') . ($part ? ' is-part' : '')); ?>
   <tr<?= $cls ? ' class="' . $cls . '"' : '' ?><?= $print ? '' : ' data-emp="' . (int)$it['employee_id'] . '" data-item="' . (int)$it['id'] . '" data-name="' . h(full_name($it)) . '" title="Click to select this employee for the buttons above"' ?>>
-    <td class="nowrap"><?= h($it['employee_no']) ?></td>
-    <td class="nowrap"><?= h(full_name($it)) ?>
+    <td class="nowrap <?= $fz(1, 2) ?>"><?= h($it['employee_no']) ?></td>
+    <td class="nowrap <?= $fz(2, 2) ?>"><?= h(full_name($it)) ?>
       <?php if ($part): ?><small class="part-tag" title="Only the pay earned in this branch (<?= (int)$part['locations'] ?> locations worked)">Branch part, <?= $part['is_home'] ? 'deductions here' : 'deductions at ' . h($part['source_code']) ?></small><?php endif; ?>
     </td>
     <?= $cells($r, 'e', false) ?>
@@ -79,9 +84,9 @@ $renderRow = function (array $r) use ($cells, $print) {
     <?php endif; ?>
   </tr>
 <?php };
-$renderTotal = function (array $t, string $label) use ($cells, $print) { ?>
+$renderTotal = function (array $t, string $label) use ($cells, $print, $fz) { ?>
   <tr class="sub">
-    <td colspan="2"><?= h($label) ?></td>
+    <td colspan="2" class="<?= $fz(1, 1) ?>"><?= h($label) ?></td>
     <?= $cells($t, 'e', true) ?>
     <td class="num"><?= h(number_format($t['gross'], 2)) ?></td>
     <?= $cells($t, 'd', true) ?>
@@ -99,9 +104,9 @@ $allCols = $spanE + $spanD + 2 + $lead;
   <thead>
     <tr>
       <?php if ($summary): ?>
-        <?php foreach ($summary['by'] as $d): ?><th rowspan="2"><?= h($sumDims[$d][0]) ?></th><?php endforeach; ?><th rowspan="2" class="num">Employees</th>
+        <?php foreach (array_values($summary['by']) as $i => $d): ?><th rowspan="2" class="<?= $fz($i + 1, count($summary['by'])) ?>"><?= h($sumDims[$d][0]) ?></th><?php endforeach; ?><th rowspan="2" class="num">Employees</th>
       <?php else: ?>
-      <th rowspan="2">Emp. no.</th><th rowspan="2">Employee name</th>
+      <th rowspan="2" class="<?= $fz(1, 2) ?>">Emp. no.</th><th rowspan="2" class="<?= $fz(2, 2) ?>">Employee name</th>
       <?php endif; ?>
       <th class="grp-e" colspan="<?= $expE ? $spanE - 1 + count($othE) : $spanE ?>" data-span="<?= $spanE ?>" data-span-exp="<?= $spanE - 1 + count($othE) ?>" data-grp="e">Earnings</th>
       <th class="grp-d" colspan="<?= $spanD + ($expD ? count($othD) - 1 : 0) + ($expC ? count($othC) - 1 : 0) ?>" data-span="<?= $spanD ?>" data-span-exp="<?= $spanD - 1 + count($othD) ?>" data-grp="d">Deductions</th>
@@ -138,8 +143,8 @@ $allCols = $spanE + $spanD + 2 + $lead;
       // v22: the totals of each combination (and the sub-totals of the first dimension)
       foreach ($summary['lines'] as $line) { ?>
     <tr class="<?= $line['sub'] ? 'sub' : 'sum-line' ?>">
-      <?php foreach ($summary['by'] as $i => $d): ?>
-        <td class="nowrap"><?= $line['sub'] ? ($i === 0 ? 'Sub-total — ' . h($line['keys'][$d]) : '') : h($line['keys'][$d]) ?></td>
+      <?php foreach (array_values($summary['by']) as $i => $d): ?>
+        <td class="nowrap <?= $fz($i + 1, count($summary['by'])) ?>"><?= $line['sub'] ? ($i === 0 ? 'Sub-total — ' . h($line['keys'][$d]) : '') : h($line['keys'][$d]) ?></td>
       <?php endforeach; ?>
       <td class="num"><?= (int)$line['employees'] ?></td>
       <?= $cells($line['totals'], 'e', $line['sub']) ?>
@@ -154,7 +159,7 @@ $allCols = $spanE + $spanD + 2 + $lead;
       echo '<tr><td colspan="' . ($allCols + count($othE) + count($othD) + count($othC)) . '" style="text-align:center;padding:24px;color:#666">No payroll item matches these filters.</td></tr>';
   } elseif (!empty($group)) {
       foreach (register_groups($data) as $unit => $g) {
-          echo '<tr class="sub"><td colspan="' . ($allCols + count($othE) + count($othD) + count($othC)) . '">' . h($unit ?: 'Unassigned') . '</td></tr>';
+          echo '<tr class="sub"><td colspan="' . ($allCols + count($othE) + count($othD) + count($othC)) . '"><span class="reg-grp-label">' . h($unit ?: 'Unassigned') . '</span></td></tr>';
           foreach ($g['rows'] as $r) {
               $renderRow($r);
           }
@@ -170,9 +175,9 @@ $allCols = $spanE + $spanD + 2 + $lead;
   <tfoot>
     <tr>
       <?php if ($summary): ?>
-        <td colspan="<?= count($summary['by']) ?>">GRAND TOTAL</td><td class="num"><?= count(array_unique(array_map(fn($r) => (int)$r['item']['employee_id'], $rows))) ?></td>
+        <td colspan="<?= count($summary['by']) ?>" class="<?= $fz(1, 1) ?>">GRAND TOTAL</td><td class="num"><?= count(array_unique(array_map(fn($r) => (int)$r['item']['employee_id'], $rows))) ?></td>
       <?php else: ?>
-      <td colspan="2">GRAND TOTAL (<?= count($rows) ?>)</td>
+      <td colspan="2" class="<?= $fz(1, 1) ?>">GRAND TOTAL (<?= count($rows) ?>)</td>
       <?php endif; ?>
       <?= $cells($tot, 'e', true) ?>
       <td class="num"><?= h(number_format($tot['gross'], 2)) ?></td>

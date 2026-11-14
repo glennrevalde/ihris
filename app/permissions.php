@@ -188,7 +188,7 @@ function perm_defs(): array
         'locations' => ['a' => $crudi, 'def' => 'hr payroll', 'ops' => ['set_default' => 'edit']],
         'jobs' => ['a' => $crudi, 'def' => 'hr payroll', 'ops' => ['set_default' => 'edit']],
         'emp_types' => ['a' => $crud, 'def' => 'hr payroll', 'ops' => ['set_default' => 'edit']],
-        'emp_groups' => ['a' => $crud, 'def' => 'hr payroll', 'ops' => ['set_default' => 'edit']],
+        'emp_groups' => ['a' => $crudi, 'def' => 'hr payroll', 'ops' => ['set_default' => 'edit'], 'inherit' => ['import' => 'emp_groups.create']],   // v33: CSV import
         'class_groups' => ['a' => $crud, 'def' => 'hr payroll', 'ops' => ['set_default' => 'edit']],
         'rank_categories' => ['a' => $crud, 'def' => 'hr payroll', 'ops' => ['set_default' => 'edit']],
         'classifications' => ['a' => $crud, 'def' => 'hr payroll', 'ops' => ['set_default' => 'edit']],
