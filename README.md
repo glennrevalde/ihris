@@ -108,6 +108,7 @@ your HRIS database (for example `hris_web`) in phpMyAdmin and import, in order, 
 * `database/upgrade_to_v23_mysql55.sql` — the AMS policy *# of minutes between LOGS as INVALID* (any type of log) and flexible shift types 4-6 without required hours.
 * `database/upgrade_to_v24_mysql55.sql` — Hold / Resume of the transactions with terms (`employee_term_trans.status` *hold*, `held_at`, `held_by`, `hold_reason`) and the holiday rule of the daily-rated employees (`attendance_summaries.hol_in_basic`).
 * `database/upgrade_to_v25_mysql55.sql` — Salary restriction: the table `user_salary_exclusions` (per user, the employees whose pay the user may not see).
+* `database/upgrade_to_v26_mysql55.sql` — longer company / branch codes (`branches.code` 40, `company_code`, `branch_code`, `init_code` 20; `log_staging.co_code`, `branch_code` 20).
 
 The scripts are written for MySQL 5.5 (no `ADD COLUMN IF NOT EXISTS`; a small stored procedure
 checks `information_schema` first), are safe to run more than once and never touch existing rows
@@ -203,6 +204,10 @@ Demo data covers **August–September 2026**: August has approved cutoffs and fi
 | Duplicate logs | `# of minutes between LOGS w/ same TYPE as INVALID` again drops only a repeat of the same log type (or of two untyped punches), so a short 15-minute break is always kept. |
 | Multi-location hours listed by Co. / Branch | Payroll Batch Transaction and Attendance Batch Transaction Entry: choosing a company / branch lists its employees **and** everyone whose multi-location entry has hours there. Their row shows only the hours of that branch (*Part of a multi-location transaction*); saving it changes that location and the total becomes the sum of the locations again. All companies lists every transaction whole. |
 | Payroll Register and payslips by branch | Payroll Batch Register → Co. / Branch: the employees of the branch plus the multi-location employees who worked there, each with only the pay earned in that branch, its share of the employer contributions and the deductions when it is the deduction source (*Branch part*). The branch totals of all branches add up to the *All* register. **Branch payslip** opens the payslip on that branch's tab. Print Payslips with a company / branch prints the branch payslip of those employees; with All, one consolidated payslip each (or split). Print and CSV export follow the same filter. |
+
+### Fix after version 33: "Data too long for column 'code'" when importing the Company Table
+
+Database version 26: open the site once (it upgrades by itself) or import `database/upgrade_to_v26_mysql55.sql` (MySQL 5.5, safe to run more than once). The Company Table's *Unique short code* takes up to 40 characters (was 20), *Company code*, *Branch code (BCde)* and *Init code* up to 20 (were 10), and so do the codes kept with the imported attendance logs. Every import of a setup table now checks each text against the size of its column at **Load and check / Check data**: a value that is too long is marked in red ("Too long: at most 40 characters, this one has 48") instead of passing the check and failing at **Save to database**; the format lists the size ("Up to 40 characters"), and the New / Edit forms of those tables stop typing at the size of the column. Nothing of a failed save is ever written (the save is one transaction).
 
 ### Additions in version 33: frozen register columns, Employee Group import, multi-company processing, final closing warning
 

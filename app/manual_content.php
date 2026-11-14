@@ -4115,6 +4115,7 @@ return [
     'The combination of company code and branch code must be unique.',
     'One row can be marked as default, which is what the register letterhead uses.',
     'New branch on an existing row clones the registration, bank and approver details and proposes the next branch code.',
+    'Sizes: Unique short code up to 40 characters, Company code, Branch code (BCde) and Init code up to 20. In the CSV / Excel import a longer value is marked in red at Load and check (Too long: at most ... characters) and must be shortened before Save to database.',
 ],
 'tips' => [
     'The Import from CSV panel on this screen loads companies / branches in bulk; rows are matched on the code. See Import from CSV on the forms.',

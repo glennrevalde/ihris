@@ -263,6 +263,24 @@ function crud_page(array $cfg): void
     page_footer();
 }
 
+/** v33: the maximum length of each text column of a table (column => characters), from the database itself. */
+function table_text_lengths(string $table): array
+{
+    static $memo = [];
+    $key = (function_exists('active_db_name') ? active_db_name() : '') . '|' . $table;
+    if (!isset($memo[$key])) {
+        $memo[$key] = [];
+        try {
+            foreach (rows("SELECT column_name AS c, character_maximum_length AS n FROM information_schema.columns
+                           WHERE table_schema = DATABASE() AND table_name = ? AND data_type IN ('varchar', 'char')", [$table]) as $r) {
+                $memo[$key][(string)$r['c']] = (int)$r['n'];
+            }
+        } catch (Throwable $e) {
+        }
+    }
+    return $memo[$key];
+}
+
 function crud_form(array $cfg, array $rec, array $filterVals): void
 {
     $page = $cfg['page'];
@@ -271,7 +289,11 @@ function crud_form(array $cfg, array $rec, array $filterVals): void
     echo '<form method="post" action="' . h(url($page, array_filter($filterVals, fn($v) => $v !== null && $v !== ''))) . '">' . csrf_field();
     echo '<input type="hidden" name="_action" value="save"><input type="hidden" name="id" value="' . $id . '">';
     echo '<div class="form-grid">';
+    $lens = table_text_lengths((string)$cfg['table']);   // v33: a text box takes no more than its column holds
     foreach ($cfg['fields'] as $col => $f) {
+        if (isset($lens[$col]) && !isset($f['maxlength']) && in_array($f['type'] ?? 'text', ['text', 'email', 'tel', 'url'], true)) {
+            $f['maxlength'] = $lens[$col];
+        }
         echo form_field($col, $f, $rec[$col] ?? ($f['default'] ?? null));
     }
     echo '</div><div class="form-actions"><button class="btn btn-primary">Save</button> <a class="btn" href="'
@@ -325,7 +347,8 @@ function form_field(string $name, array $f, $value): string
             $html .= '<label>' . $label . '</label><input type="time" name="' . h($name) . '" value="' . h($value ? substr((string)$value, 0, 5) : '') . '"' . $req . $ro . ' ' . $attrs . '>' . $help;
             break;
         default:
-            $html .= '<label>' . $label . '</label><input type="' . h($type) . '" name="' . h($name) . '" value="' . h($value) . '"' . $req . $ro . ' ' . $attrs . '>' . $help;
+            $max = !empty($f['maxlength']) ? ' maxlength="' . (int)$f['maxlength'] . '"' : '';
+            $html .= '<label>' . $label . '</label><input type="' . h($type) . '" name="' . h($name) . '" value="' . h($value) . '"' . $req . $ro . $max . ' ' . $attrs . '>' . $help;
     }
     return $html . '</div>';
 }

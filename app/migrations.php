@@ -15,7 +15,7 @@
  */
 require_once __DIR__ . '/engine/paytrans.php';
 
-const DB_VERSION = 25;
+const DB_VERSION = 26;
 
 function db_version(): int
 {
@@ -1355,10 +1355,27 @@ function migration_v25(): array
     ], 'columns' => [], 'modify' => [], 'settings' => [], 'seeds' => [], 'data' => []];
 }
 
+/**
+ * Version 26 (v33 fix): longer company / branch codes. The Unique short code of the Company Table takes 40
+ * characters (was 20), the Company code and the Branch code (BCde) 20 (were 10), so are the codes kept with
+ * the imported attendance logs. Existing values are kept as they are.
+ */
+function migration_v26(): array
+{
+    return ['tables' => [], 'columns' => [], 'modify' => [
+        ['branches', 'code', 'VARCHAR(40) NOT NULL', 'v26'],
+        ['branches', 'company_code', 'VARCHAR(20) NULL', 'v26'],
+        ['branches', 'branch_code', 'VARCHAR(20) NULL', 'v26'],
+        ['branches', 'init_code', 'VARCHAR(20) NULL', 'v26'],
+        ['log_staging', 'co_code', 'VARCHAR(20) NULL', 'v26'],
+        ['log_staging', 'branch_code', 'VARCHAR(20) NULL', 'v26'],
+    ], 'settings' => [], 'seeds' => [], 'data' => []];
+}
+
 /** Every upgrade step in order: version => definitions. */
 function migrations_all(): array
 {
-    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21', 22 => 'migration_v22', 23 => 'migration_v23', 24 => 'migration_v24', 25 => 'migration_v25'];
+    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21', 22 => 'migration_v22', 23 => 'migration_v23', 24 => 'migration_v24', 25 => 'migration_v25', 26 => 'migration_v26'];
 }
 
 function mig_table_exists(string $t): bool
@@ -1533,7 +1550,8 @@ function db_upgrade_sql(int $version = DB_VERSION): string
         '22' => 'Super Admin re-opening of closed periods, ZKTeco attlog.xlsx import configuration',
         '23' => 'invalid-log window for every type of log, flexible shift types 4-6 without required hours',
         '24' => 'Hold / Resume of transactions with terms, holidays of daily-rated employees in the basic pay',
-        '25' => 'Salary restriction: employees whose pay a user may not see'][(string)$version] ?? '';
+        '25' => 'Salary restriction: employees whose pay a user may not see',
+        '26' => 'Longer company / branch codes (Unique short code 40, Company code and Branch code 20 characters)'][(string)$version] ?? '';
     $q = fn($v) => $v === null ? 'NULL' : "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], (string)$v) . "'";
     $out = [];
     $out[] = "-- =====================================================================";

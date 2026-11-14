@@ -364,6 +364,13 @@ function dimp_crud_def(array $def, array $cfg): array
         }
         $fields[$col] = $f;
     }
+    // v33: the real size of each text column, so a value too long is marked at the check instead of failing the save
+    $lens = table_text_lengths($table);
+    foreach ($fields as $col => $f) {
+        if (isset($lens[$col]) && !in_array($f['type'] ?? 'text', ['select', 'multicheck', 'checkbox', 'number', 'money', 'date', 'time'], true)) {
+            $fields[$col]['maxlength'] = min((int)($f['maxlength'] ?? $lens[$col]), $lens[$col]);
+        }
+    }
     $keys = array_values(array_filter(dimp_crud_keys($def['kind']), fn($k) => isset($fields[$k])));
     if (!$keys) {
         $keys = [array_key_first($fields)];
@@ -399,7 +406,7 @@ function dimp_crud_def(array $def, array $cfg): array
                 $ex = $list[0] ?? '';
                 break;
             default:
-                $hint = '';
+                $hint = !empty($f['maxlength']) ? 'Up to ' . (int)$f['maxlength'] . ' characters.' : '';
         }
         $cols[$col] = [$f['label'], !empty($f['required']), trim($hint . ' ' . $help), $ex];
     }
@@ -476,7 +483,10 @@ function dimp_crud_def(array $def, array $cfg): array
                     break;
                 default:
                     $max = (int)($f['maxlength'] ?? 255);
-                    $out[$col] = mb_substr($v, 0, $max);
+                    if (mb_strlen($v) > $max) {   // v33: never cut silently (a cut code could match another record)
+                        $err($col, 'Too long: at most ' . $max . ' characters, this one has ' . mb_strlen($v) . '. Shorten it.');
+                    }
+                    $out[$col] = $v;
             }
         }
         return $out;
