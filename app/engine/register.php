@@ -83,11 +83,13 @@ function register_data(int $runId, array $f = []): array
                    FROM payroll_items pi JOIN employees e ON e.id = pi.employee_id
                    LEFT JOIN org_units ou ON ou.id = pi.org_unit_id LEFT JOIN branches b ON b.id = pi.default_branch_id
                    LEFT JOIN emp_groups eg ON eg.id = e.employee_group_id LEFT JOIN emp_types et ON et.id = e.employee_type_id
-                   WHERE ' . implode(' AND ', $where) . user_scope_sql('e') . ' ORDER BY ou.name, e.last_name, e.first_name', $params);
+                   WHERE ' . implode(' AND ', $where) . salary_scope_sql('e') . ' ORDER BY ou.name, e.last_name, e.first_name', $params);
+    // v32: employees on the user's salary restriction list are left out (counted for the note of the page)
+    $salHidden = salary_hidden_count('FROM payroll_items pi JOIN employees e ON e.id = pi.employee_id WHERE ' . implode(' AND ', $where) . user_scope_sql('e'), $params);
     // the employer-share buckets always exist, so a filter that matches nobody reads as zero, not as missing keys
     $employer = ['sss_er' => 0.0, 'sss_ec' => 0.0, 'phic_er' => 0.0, 'hdmf_er' => 0.0];
     if (!$items) {
-        return ['run' => $run, 'rows' => [], 'totals' => register_blank_row(), 'employer' => $employer, 'others_e' => [], 'others_d' => [], 'others_c' => []];
+        return ['run' => $run, 'rows' => [], 'totals' => register_blank_row(), 'employer' => $employer, 'others_e' => [], 'others_d' => [], 'others_c' => [], 'salary_hidden' => $salHidden];
     }
     $ids = array_map(fn($i) => (int)$i['id'], $items);
     $lines = rows('SELECT * FROM payroll_item_lines WHERE item_id IN (' . implode(',', $ids) . ')');
@@ -189,7 +191,7 @@ function register_data(int $runId, array $f = []): array
     ksort($othD, SORT_NATURAL | SORT_FLAG_CASE);
     ksort($othC, SORT_NATURAL | SORT_FLAG_CASE);
     return ['run' => $run, 'rows' => $rows, 'totals' => $totals, 'employer' => $employer, 'others_e' => array_keys($othE), 'others_d' => array_keys($othD),
-        'others_c' => array_keys($othC)];
+        'others_c' => array_keys($othC), 'salary_hidden' => $salHidden];
 }
 
 function register_blank_row(): array
@@ -503,7 +505,7 @@ function ytd_data(int $year, array $f = []): array
                         COALESCE(SUM(pi.other_deductions),0) other_ded, COALESCE(SUM(pi.total_deductions),0) total_ded, COALESCE(SUM(pi.net_pay),0) net
                  FROM payroll_items pi JOIN payroll_runs pr ON pr.id = pi.run_id JOIN employees e ON e.id = pi.employee_id
                  LEFT JOIN org_units ou ON ou.id = pi.org_unit_id
-                 WHERE ' . implode(' AND ', $where) . user_scope_sql('e') . '
+                 WHERE ' . implode(' AND ', $where) . salary_scope_sql('e') . '
                  GROUP BY e.id, e.employee_no, e.first_name, e.last_name, e.middle_name, e.suffix, e.tin, e.status, ou.name
                  ORDER BY ou.name, e.last_name, e.first_name', $params);
 }
@@ -529,7 +531,7 @@ function payroll_journal(int $runId): array
     $gl = fn(string $key, string $default) => (string)(setting($key, $default) ?: $default);
     $ids = array_map(fn($r) => (int)$r['item']['id'], $data['rows']);
     if (!$ids) {
-        return ['run' => $run, 'accounts' => [], 'debit' => 0, 'credit' => 0];
+        return ['run' => $run, 'accounts' => [], 'debit' => 0, 'credit' => 0, 'salary_hidden' => (int)($data['salary_hidden'] ?? 0)];
     }
     // earnings by GL account (benefit / transaction codes carry their own account)
     foreach (rows('SELECT l.*, bt.gl_code AS ben_gl, dt.gl_code AS ded_gl, ft.gl_code AS fix_gl, et.gl_code AS earn_gl
@@ -573,5 +575,5 @@ function payroll_journal(int $runId): array
         $credit += $a['credit'];
     }
     ksort($acct);
-    return ['run' => $run, 'accounts' => array_values($acct), 'debit' => $debit, 'credit' => $credit];
+    return ['run' => $run, 'accounts' => array_values($acct), 'debit' => $debit, 'credit' => $credit, 'salary_hidden' => (int)($data['salary_hidden'] ?? 0)];
 }

@@ -2391,3 +2391,41 @@ table.reg.reg-summary td.nowrap { font-weight: 600; }
 .ad-table .ad-total { background: #f5f7fa; }
 .ad-table.is-net-view .ad-td { text-align: center; font-size: 9.5px; }
 .ad-table .ad-incl { color: #444; }
+
+/* ===================================================================== v32: salary restriction */
+.salx-card { display: grid; gap: 12px; }
+.salx-head { display: flex; gap: 18px; align-items: flex-start; justify-content: space-between; }
+.salx-head h2 { margin-bottom: 4px; }
+.salx-head p { margin: 0; max-width: 780px; }
+.salx-count { flex: 0 0 auto; display: grid; justify-items: center; min-width: 96px; padding: 8px 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-2); }
+.salx-count strong { font-size: 22px; line-height: 1.1; color: var(--ink); font-variant-numeric: tabular-nums; }
+.salx-count span { font-size: 12px; color: var(--muted); }
+.salx-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.salx-tools input[type=search] { flex: 1 1 260px; min-width: 0; }
+.salx-tools select { flex: 0 1 240px; min-width: 0; }
+.salx-only { margin: 0; white-space: nowrap; }
+.salx-btns { display: flex; gap: 6px; margin-left: auto; }
+.salx-list { max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+.salx-row { display: grid; grid-template-columns: 22px minmax(0, 1.4fr) minmax(0, 1fr) 90px; gap: 12px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; margin: 0; }
+.salx-row:last-of-type { border-bottom: 0; }
+.salx-row:hover { background: var(--surface-2); }
+.salx-row[hidden] { display: none; }
+.salx-row.is-on { background: #fff6f5; box-shadow: inset 3px 0 0 var(--red); }
+.salx-row.is-inactive .salx-name strong { color: var(--muted); }
+.salx-name, .salx-unit { display: grid; min-width: 0; }
+.salx-name strong, .salx-name small, .salx-unit, .salx-unit small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.salx-name small, .salx-unit small, .salx-state { font-size: 12px; color: var(--muted); }
+.salx-unit { font-size: 13px; color: var(--text-2); }
+.salx-state { text-align: right; }
+.salx-none { padding: 14px; }
+.salary-note { margin-bottom: 14px; border-left: 3px solid var(--amber); background: var(--amber-bg); }
+@media (max-width: 720px) {
+  .salx-head { flex-direction: column; }
+  .salx-count { grid-auto-flow: column; gap: 8px; align-items: baseline; }
+  .salx-btns { margin-left: 0; }
+  .salx-tools select { flex: 1 1 100%; }
+  .salx-row { grid-template-columns: 22px minmax(0, 1fr); row-gap: 2px; }
+  .salx-unit { grid-column: 2; }
+  .salx-state { grid-column: 2; text-align: left; }
+  .salx-state:empty { display: none; }
+}

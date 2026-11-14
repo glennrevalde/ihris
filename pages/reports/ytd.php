@@ -18,7 +18,7 @@ $data = rows("SELECT e.id, e.employee_no, e.last_name, e.first_name, e.middle_na
                      SUM(pi.sss_ee) sss, SUM(pi.phic_ee) phic, SUM(pi.hdmf_ee) hdmf, SUM(pi.taxable_income) taxable, SUM(pi.withholding_tax) tax, SUM(pi.net_pay) net,
                      SUM(CASE WHEN pi.is_mwe = 1 THEN pi.basic_earned + pi.holiday_pay + pi.premium_pay + pi.ot_pay + pi.nd_pay ELSE 0 END) mwe
               FROM payroll_items pi JOIN payroll_runs r ON r.id = pi.run_id JOIN employees e ON e.id = pi.employee_id
-              WHERE r.status = 'finalized' AND YEAR(r.period_end) = ?$empWhere" . user_scope_sql('e') . "
+              WHERE r.status = 'finalized' AND YEAR(r.period_end) = ?$empWhere" . salary_scope_sql('e') . "
               GROUP BY e.id, e.employee_no, e.last_name, e.first_name, e.middle_name, e.suffix, e.tin, e.status, e.date_separated, e.is_mwe ORDER BY e.last_name, e.first_name", $params);
 foreach ($data as &$d) {
     // previous employer of the year (YTD Information for Previous Employer)
@@ -38,6 +38,7 @@ if (get('alphalist')) {
 }
 page_header('Year-to-Date & BIR 2316', ['subtitle' => 'Cumulative figures from finalized payroll runs. Tax due is the annualized tax on total taxable compensation (TRAIN annual table).',
     'actions' => '<a class="btn" href="' . url('rpt_ytd', ['year' => $year, 'employer' => $employer, 'alphalist' => 1]) . '">Export alphalist (CSV)</a> <button type="button" class="btn" data-print>Print</button> <button type="button" class="btn" data-save-pdf data-pdf-root=".content" data-pdf-size="landscape">Save as PDF</button>']);
+echo salary_restricted_note('this report');   // v32
 ?>
 <form class="card filters" method="get"><input type="hidden" name="p" value="rpt_ytd">
   <label>Year<input type="number" name="year" value="<?= $year ?>" style="width:100px"></label>

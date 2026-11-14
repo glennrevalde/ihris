@@ -286,6 +286,9 @@ function emp_import_map(array $r, array $opt, array &$cache, array &$seenNos, ar
         $d['employee_no'] = '(auto)';
     }
     if ($existing) {
+        if (salary_restricted($existing)) {   // v32: salary restricted for this user: the rate on file is kept
+            unset($r['basic_rate'], $d['basic_rate']);
+        }
         // an update touches only the columns the file actually fills
         foreach ($d as $k => $v) {
             if (($v === null || $v === '' || $v === 0 || $v === 0.0) && !in_array($k, ['employee_no'], true) && (!isset($r[$k]) || $r[$k] === '')) {
@@ -461,7 +464,7 @@ if ($preview):
             <td><?= h($bview[$d['default_branch_id'] ?? 0] ?? '') ?></td>
             <td><?= h($pgview[$d['pay_group_id'] ?? 0] ?? '') ?></td>
             <td class="nowrap"><?= h($d['date_hired'] ?? '') ?></td>
-            <?php if (salary_can('view')): ?><td class="num"><?= isset($d['basic_rate']) ? money($d['basic_rate']) . '<br><small class="muted">/' . h(($d['rate_type'] ?? 'monthly') === 'daily' ? 'day' : 'month') . '</small>' : '' ?></td><?php endif; ?>
+            <?php if (salary_can('view')): ?><td class="num"><?= $it['existing'] && salary_restricted((int)$it['existing']) ? salary_show(0, '', (int)$it['existing']) : '' ?><?= isset($d['basic_rate']) ? money($d['basic_rate']) . '<br><small class="muted">/' . h(($d['rate_type'] ?? 'monthly') === 'daily' ? 'day' : 'month') . '</small>' : '' ?></td><?php endif; ?>
             <td><?= $it['account'] ? 'Yes' : ($it['existing'] ? '' : 'No') ?></td>
             <td class="small <?= $it['errors'] ? 'text-bad' : 'muted' ?>"><?= h(implode(' ', $it['errors'])) ?></td>
           </tr>

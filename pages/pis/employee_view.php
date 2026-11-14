@@ -6,7 +6,7 @@ if (!$e) {
 }
 // authorized by index.php: employees.view, or a supervisor / department head of this employee (read only)
 $staff = can('employees.view');
-$seeSalary = salary_can('view');   // Basic Salary view right (app/engine/scope.php)
+$seeSalary = salary_can('view', $id);   // Basic Salary view right (app/engine/scope.php); v32: and not on the user's salary restriction
 $canEdit = can('employees.edit');
 
 if (is_post() && $canEdit) {
@@ -157,12 +157,12 @@ page_header('Employee 201 File', ['back' => url('employees'), 'actions' => $acti
         <dt>Regularized</dt><dd><?= h(fmt_date($e['date_regularized']) ?: '—') ?></dd>
         <dt>Rank / level</dt><dd><?= h($e['rank_level'] ?: '—') ?></dd>
         <dt>Supervisor</dt><dd><?= $sup ? '<a href="' . url('employee_view', ['id' => $sup['id']]) . '">' . h(full_name($sup, false)) . '</a>' : '—' ?></dd>
-        <dt>Salary grade</dt><dd><?= h($e['grade_code'] ? $e['grade_code'] . ($e['salary_step'] ? ' step ' . $e['salary_step'] : '') : '—') ?></dd>
+        <dt>Salary grade</dt><dd><?= salary_restricted($id) ? '<span class="muted">Hidden</span>' : h($e['grade_code'] ? $e['grade_code'] . ($e['salary_step'] ? ' step ' . $e['salary_step'] : '') : '—') ?></dd>
         <?php if ($seeSalary): ?>
         <dt>Basic rate</dt><dd><?= peso($e['basic_rate']) ?> / <?= $e['rate_type'] === 'daily' ? 'day' : 'month' ?></dd>
         <dt>Equivalent rates</dt><dd class="small"><?= peso($rates['monthly']) ?>/mo, <?= peso($rates['daily']) ?>/day, <?= peso($rates['hourly']) ?>/hr (factor <?= (int)$e['days_per_year'] ?>)</dd>
         <?php else: ?>
-        <dt>Basic rate</dt><dd class="muted">Hidden (no Basic Salary view right), <?= $e['rate_type'] === 'daily' ? 'daily' : 'monthly' ?>-rated</dd>
+        <dt>Basic rate</dt><dd class="muted">Hidden (<?= salary_restricted($id) ? 'salary restricted for your account' : 'no Basic Salary view right' ?>), <?= $e['rate_type'] === 'daily' ? 'daily' : 'monthly' ?>-rated</dd>
         <?php endif; ?>
         <dt>Pay group</dt><dd><?= h($e['pay_group_name']) ?> (<?= h(label($e['frequency'])) ?> BIR table)</dd>
         <dt>Default branch</dt><dd><?= h($e['branch_name']) ?></dd>

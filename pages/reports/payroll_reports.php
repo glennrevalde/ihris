@@ -124,7 +124,7 @@ if (get('print')) {
     echo company_letterhead($f['branch_id'] ? row('SELECT * FROM branches WHERE id = ?', [$f['branch_id']]) : null);
     echo '<h1>' . h($title) . '</h1>';
     echo '<div class="doc-meta"><div><strong>' . h($scopeLabel) . '</strong>' . ($menu === 'ytd' ? ', ' . ($mode === 'detail' ? 'detail per payroll period' : 'summary per employee') : '') . '</div>'
-        . '<div>Printed ' . h(fmt_dt(now())) . '</div></div>' . report_selection_html($f, [], true);
+        . '<div>Printed ' . h(fmt_dt(now())) . '</div></div>' . report_selection_html($f, [], true) . salary_restricted_note('', true);
     if ($note) {
         echo '<p class="small"><em>' . h($note) . '</em></p>';
     }
@@ -139,6 +139,7 @@ page_header($titles[$menu], [
     'actions' => $scope ? '<a class="btn" target="_blank" href="' . h(url($route, $keep + ['print' => 1])) . '">Print</a><a class="btn" href="' . h(url($route, $keep + ['export' => 1])) . '">Export CSV</a>' : '',
 ]);
 $branchOpts = pairs("SELECT id, CONCAT(COALESCE(branch_code, code), ' — ', name) FROM branches WHERE is_active = 1 ORDER BY company_code, branch_code, code");
+echo salary_restricted_note('these reports');   // v32
 ?>
 <?php if (count($types) > 1): ?>
   <nav class="rpt-types" aria-label="Report">

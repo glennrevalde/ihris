@@ -153,6 +153,11 @@ if (!function_exists('pt_matrix_rows')) {
     function pt_rate_chips(array $emp): string
     {
         $r = employee_rates($emp);
+        if (!salary_can('view', (int)($emp['id'] ?? 0) ?: null)) {   // v32: no Basic Salary view right, or salary restricted for this employee
+            return '<div class="chips"><span class="chip salary-hidden" title="Hidden: salary not shown for your account">Rates hidden</span>'
+                . '<span class="chip">' . number_format($r['hpd'], 2) . ' hrs/day</span>'
+                . '<span class="chip">' . h(label($emp['rate_type'])) . '-rated</span></div>';
+        }
         return '<div class="chips">'
             . '<span class="chip">Monthly ₱' . number_format($r['monthly'], 2) . '</span>'
             . '<span class="chip">Daily ₱' . number_format($r['daily'], 2) . '</span>'

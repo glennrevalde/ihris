@@ -64,11 +64,13 @@ if (is_post()) {
 }
 $run = payroll_run($id);
 $items = rows('SELECT pi.*, e.employee_no, e.first_name, e.last_name, e.middle_name, e.suffix, b.code AS branch_code FROM payroll_items pi
-               JOIN employees e ON e.id = pi.employee_id LEFT JOIN branches b ON b.id = pi.default_branch_id WHERE pi.run_id = ?' . user_scope_sql('e') . ' ORDER BY e.last_name, e.first_name', [$id]);
+               JOIN employees e ON e.id = pi.employee_id LEFT JOIN branches b ON b.id = pi.default_branch_id WHERE pi.run_id = ?' . salary_scope_sql('e') . ' ORDER BY e.last_name, e.first_name', [$id]);
+// v32: the employees on the user's salary restriction list are left out of the lines and the totals
+$salHidden = salary_hidden_count('FROM payroll_items pi JOIN employees e ON e.id = pi.employee_id WHERE pi.run_id = ?' . user_scope_sql('e'), [$id]);
 $ex = rows('SELECT x.*, e.first_name, e.last_name, e.middle_name, e.suffix FROM payroll_exceptions x LEFT JOIN employees e ON e.id = x.employee_id WHERE x.run_id = ?' . scope_sql_or_null('e', 'x.employee_id') . ' ORDER BY x.status DESC, x.blocking DESC, x.id', [$id]);
-$adjs = rows('SELECT a.*, e.first_name, e.last_name, e.middle_name, e.suffix, u.username FROM payroll_adjustments a JOIN employees e ON e.id = a.employee_id LEFT JOIN users u ON u.id = a.created_by WHERE a.run_id = ?' . user_scope_sql('e'), [$id]);
+$adjs = rows('SELECT a.*, e.first_name, e.last_name, e.middle_name, e.suffix, u.username FROM payroll_adjustments a JOIN employees e ON e.id = a.employee_id LEFT JOIN users u ON u.id = a.created_by WHERE a.run_id = ?' . salary_scope_sql('e'), [$id]);
 $branches = rows('SELECT b.code, b.name, COUNT(DISTINCT pb.employee_id) AS n, SUM(pb.gross) AS gross, SUM(pb.er_share_alloc) AS er, SUM(pb.reg_hours) AS hrs
-                  FROM payroll_branch_items pb JOIN branches b ON b.id = pb.branch_id WHERE pb.run_id = ? GROUP BY b.code, b.name ORDER BY b.code', [$id]);
+                  FROM payroll_branch_items pb JOIN branches b ON b.id = pb.branch_id WHERE pb.run_id = ?' . salary_excl_sql('pb.employee_id') . ' GROUP BY b.code, b.name ORDER BY b.code', [$id]);
 $t = array_fill_keys(['gross_pay', 'basic_pay', 'ot_pay', 'premium_pay', 'nd_pay', 'holiday_pay', 'sss_ee', 'phic_ee', 'hdmf_ee', 'hdmf_ee_voluntary', 'withholding_tax', 'other_deductions', 'total_deductions', 'net_pay', 'sss_er', 'sss_ec', 'phic_er', 'hdmf_er', 'absence_deduction', 'late_deduction', 'undertime_deduction'], 0.0);
 foreach ($items as $it) {
     foreach ($t as $k => $v) {
@@ -107,6 +109,7 @@ page_header('Payroll ' . $run['run_no'], ['back' => back_url() ?: url('payroll_r
         . ', Pay date ' . h(fmt_date($run['pay_date'])) . ', ' . badge($run['status'])
         . ($run['status'] === 'finalized' ? (empty($run['posted_at']) ? ', <span class="state-open">waiting for Period Closing</span>' : ', <span class="state-closed">posted ' . h(fmt_date($run['posted_at'])) . '</span>') : '')
         . ($cut ? ', Attendance cutoff <a href="' . url('cutoff_view', ['id' => $cut['id']]) . '">' . badge($cut['status']) . '</a>' : '')]);
+echo salary_hidden_note($salHidden, 'this payroll run');
 ?>
 <div class="stats">
   <?= stat_card('Employees', (string)count($items), '', 'info') ?>

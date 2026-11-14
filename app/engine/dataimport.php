@@ -1077,6 +1077,9 @@ function dimp_def_retro(array $def): array
             }
             if ($e) {
                 $seen[$e['id']] = $seen[$e['id']] ?? $r['line'];
+                if (function_exists('salary_restricted') && salary_restricted((int)$e['id'])) {   // v32
+                    $r['row_errors'][] = 'The salary of this employee is restricted for your account.';
+                }
             }
             if ($r['errors'] || $r['row_errors']) {
                 continue;

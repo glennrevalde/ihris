@@ -133,7 +133,7 @@ if ($isStaff) {
     }
     if ($c['cost']) {
         foreach (rows("SELECT DATE_FORMAT(r.period_end, '%Y-%m-01') AS m, SUM(pi.gross_pay + pi.sss_er + pi.sss_ec + pi.phic_er + pi.hdmf_er) AS cost
-                       FROM payroll_items pi JOIN payroll_runs r ON r.id = pi.run_id WHERE r.status = 'finalized' AND r.period_end >= ?
+                       FROM payroll_items pi JOIN payroll_runs r ON r.id = pi.run_id WHERE r.status = 'finalized' AND r.period_end >= ?" . salary_excl_sql('pi.employee_id') . "
                        GROUP BY DATE_FORMAT(r.period_end, '%Y-%m-01')", [array_key_first($months)]) as $r) {
             if (isset($months[$r['m']])) {
                 $months[$r['m']] = (float)$r['cost'];

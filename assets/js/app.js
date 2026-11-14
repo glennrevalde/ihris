@@ -1075,6 +1075,42 @@
   refresh();
 })();
 
+/* v32: salary restriction picker (User Access & Permissions) */
+(function () {
+  'use strict';
+  var box = document.querySelector('[data-salx]');
+  if (!box) return;
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var search = box.querySelector('[data-salx-search]'), unit = box.querySelector('[data-salx-unit]'),
+      only = box.querySelector('[data-salx-only]'), count = box.querySelector('[data-salx-count]'), none = box.querySelector('[data-salx-none]');
+  var rows = $$('.salx-row', box);
+  function norm(t) { return (t || '').toLowerCase().replace(/\s+/g, ' '); }
+  rows.forEach(function (r) { r._txt = norm(r.textContent); });
+  function shown() { return rows.filter(function (r) { return !r.hidden; }); }
+  function run() {
+    var toks = norm(search && search.value).split(' ').filter(Boolean), u = unit ? unit.value : '', o = only && only.checked, n = 0, on = 0;
+    rows.forEach(function (r) {
+      var cb = r.querySelector('input'), ticked = cb && cb.checked;
+      r.classList.toggle('is-on', !!ticked);
+      if (ticked) on++;
+      var vis = (!u || r.getAttribute('data-unit') === u) && (!o || ticked) && toks.every(function (t) { return r._txt.indexOf(t) !== -1; });
+      r.hidden = !vis;
+      if (vis) n++;
+    });
+    if (count) count.textContent = on;
+    if (none) none.hidden = n > 0;
+  }
+  ['input', 'change'].forEach(function (ev) { box.addEventListener(ev, function (e) { if (e.target.matches('input, select')) run(); }); });
+  box.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-salx-tick],[data-salx-clear]');
+    if (!t) return;
+    var v = t.hasAttribute('data-salx-tick');
+    shown().forEach(function (r) { var cb = r.querySelector('input'); if (cb && !cb.disabled) cb.checked = v; });
+    run();
+  });
+  run();
+})();
+
 /* v14: narrow a long select list as you type; Earning / Deduction indicator of a code select */
 (function () {
   'use strict';

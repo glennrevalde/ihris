@@ -41,8 +41,9 @@ if ($f['status'] !== '') {
     $where[] = 'r.status = ?';
     $params[] = $f['status'];
 }
-$runs = rows('SELECT r.*, pg.name AS pg_name, pg.frequency, (SELECT COUNT(*) FROM payroll_items WHERE run_id = r.id) AS n,
-              (SELECT SUM(gross_pay) FROM payroll_items WHERE run_id = r.id) AS gross, (SELECT SUM(net_pay) FROM payroll_items WHERE run_id = r.id) AS net,
+$salx = salary_excl_sql('employee_id');   // v32: the employees whose pay is restricted for the user are not in the totals
+$runs = rows('SELECT r.*, pg.name AS pg_name, pg.frequency, (SELECT COUNT(*) FROM payroll_items WHERE run_id = r.id' . $salx . ') AS n,
+              (SELECT SUM(gross_pay) FROM payroll_items WHERE run_id = r.id' . $salx . ') AS gross, (SELECT SUM(net_pay) FROM payroll_items WHERE run_id = r.id' . $salx . ') AS net,
               (SELECT COUNT(*) FROM payroll_exceptions x WHERE x.run_id = r.id AND x.status = \'open\' AND x.blocking = 1) AS blocking
               FROM payroll_runs r JOIN pay_groups pg ON pg.id = r.pay_group_id WHERE ' . implode(' AND ', $where) . ' ORDER BY r.period_end DESC, r.id DESC', $params);
 $new = get('new');

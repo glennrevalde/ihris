@@ -17,7 +17,7 @@ $data = rows('SELECT e.id, e.employee_no, e.last_name, e.first_name, e.middle_na
                      SUM(CASE WHEN pi.is_mwe = 1 THEN pi.basic_earned ELSE 0 END) mwe_basic,
                      SUM(CASE WHEN pi.is_mwe = 1 THEN pi.holiday_pay + pi.premium_pay + pi.ot_pay + pi.nd_pay ELSE 0 END) mwe_premiums
               FROM payroll_items pi JOIN payroll_runs r ON r.id = pi.run_id JOIN employees e ON e.id = pi.employee_id
-              WHERE r.status = \'finalized\' AND YEAR(r.period_end) = ? AND MONTH(r.period_end) = ? AND pi.default_branch_id IN (' . in_list($branchIds) . ')' . user_scope_sql('e') . '
+              WHERE r.status = \'finalized\' AND YEAR(r.period_end) = ? AND MONTH(r.period_end) = ? AND pi.default_branch_id IN (' . in_list($branchIds) . ')' . salary_scope_sql('e') . '
               GROUP BY e.id, e.employee_no, e.last_name, e.first_name, e.middle_name, e.suffix, e.sss_no, e.philhealth_no, e.pagibig_no, e.tin, e.birth_date
               ORDER BY e.last_name, e.first_name', array_merge([$y, $m], $branchIds));
 $union = pairs("SELECT pi.employee_id, SUM(l.amount) FROM payroll_item_lines l JOIN payroll_items pi ON pi.id = l.item_id JOIN payroll_runs r ON r.id = pi.run_id
@@ -54,6 +54,7 @@ if (get('csv')) {
 }
 if (get('print')) {
     print_header($reports[$type] . ' ' . $period, $type !== 'sss_r5' && $type !== 'bir_1601c');
+    echo salary_restricted_note('', true);   // v32
 } else {
     page_header('Government Remittance Reports', ['subtitle' => 'Pre-formatted to the layout required by each agency. Statutory deductions are reported under each employee\'s default branch / employer only.']);
     ?>
@@ -65,6 +66,7 @@ if (get('print')) {
       <a class="btn" target="_blank" href="<?= url('rpt_remittance', ['month' => $month, 'employer' => $empSel, 'type' => $type, 'print' => 1]) ?>">Print</a>
       <a class="btn" href="<?= url('rpt_remittance', ['month' => $month, 'employer' => $empSel, 'type' => $type, 'csv' => 1]) ?>">Export CSV</a>
     </form>
+    <?= salary_restricted_note('this remittance report') ?>
     <div class="card">
     <?php
 }

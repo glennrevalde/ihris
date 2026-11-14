@@ -257,6 +257,21 @@ function ml_rows(array $cols, array $f, string $sort = 'name', string $dir = 'as
         }
     }
     unset($r);
+    // v32: salary restriction of the user: the pay columns of those employees show Hidden (and add nothing to the totals)
+    if (function_exists('salary_restricted_ids') && ($hide = salary_restricted_ids())) {
+        foreach ($rows as &$r) {
+            if (in_array((int)$r['__id'], $hide, true)) {
+                foreach (ML_SALARY_FIELDS as $k) {
+                    if (array_key_exists($k, $r)) {
+                        $r[$k] = ML_HIDDEN;
+                    }
+                }
+                $r['__basic'] = 0;
+                $r['__salx'] = 1;
+            }
+        }
+        unset($r);
+    }
     // sorting (group first, then the chosen column, then the name)
     $type = $fields[$sort][3] ?? 'text';
     $gk = $group ? (ML_GROUPS[$group][1] ?? null) : null;
@@ -279,11 +294,18 @@ function ml_rows(array $cols, array $f, string $sort = 'name', string $dir = 'as
     return $rows;
 }
 
+/** v32: the columns that show pay, hidden for an employee on the user's salary restriction list. */
+const ML_SALARY_FIELDS = ['basic_rate', 'monthly_rate', 'daily_rate', 'hourly_rate', 'salary_grade', 'salary_step'];
+const ML_HIDDEN = "\0hidden";
+
 /** A value in words for the screen, print and CSV. */
 function ml_value($v, string $type, bool $csv = false): string
 {
     if ($v === null || $v === '') {
         return '';
+    }
+    if ($v === ML_HIDDEN) {
+        return 'Hidden';
     }
     switch ($type) {
         case 'date':

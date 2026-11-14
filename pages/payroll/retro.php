@@ -38,14 +38,14 @@ if (is_post()) {
     redirect('retro');
 }
 $list = rows('SELECT r.*, e.first_name, e.last_name, e.middle_name, e.suffix, e.employee_no, pr.run_no FROM retro_adjustments r JOIN employees e ON e.id = r.employee_id
-              LEFT JOIN pending_earnings pe ON pe.id = r.pending_earning_id LEFT JOIN payroll_runs pr ON pr.id = pe.payroll_run_id WHERE 1=1' . user_scope_sql('e') . ' ORDER BY r.created_at DESC');
+              LEFT JOIN pending_earnings pe ON pe.id = r.pending_earning_id LEFT JOIN payroll_runs pr ON pr.id = pe.payroll_run_id WHERE 1=1' . salary_scope_sql('e') . ' ORDER BY r.created_at DESC');   // v32: salary restriction
 page_header('Retroactive Pay Adjustments', ['subtitle' => 'Created automatically when a salary change is saved with a past effectivity date, or computed here (e.g. a wage order with retroactive effect). The differential is included in the next payroll run as taxable pay.']);
 echo dimp_panel($dimp);
 ?>
 <div class="card"><h2>Compute retroactive differential</h2>
   <form method="post"><?= csrf_field() ?><input type="hidden" name="_action" value="compute">
     <div class="form-grid">
-      <div class="field"><label>Employee</label><select name="employee_id" required><?= options(employee_options(), null, '— select —') ?></select></div>
+      <div class="field"><label>Employee</label><select name="employee_id" required><?= options(salary_employee_options(), null, '— select —') ?></select></div>
       <div class="field"><label>Effectivity date</label><input type="date" name="effective_date" required></div>
       <div class="field"><label>Old rate (as paid)</label><input type="number" step="0.01" name="old_rate" required></div>
       <div class="field"><label>New rate</label><input type="number" step="0.01" name="new_rate" required></div>

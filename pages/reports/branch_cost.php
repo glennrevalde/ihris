@@ -8,7 +8,7 @@ $month = get('month', date('Y-m', strtotime('first day of last month')));
 $rows = rows("SELECT pb.branch_id, b.code, b.name, pb.employee_id, e.first_name, e.last_name, e.middle_name, e.suffix, pb.is_default,
                      pb.days_worked, pb.reg_hours, pb.basic_alloc, pb.premium_pay, pb.ot_pay, pb.nd_pay, pb.other_earnings, pb.late_ut_deduction, pb.gross, pb.er_share_alloc
               FROM payroll_branch_items pb JOIN payroll_runs r ON r.id = pb.run_id JOIN branches b ON b.id = pb.branch_id JOIN employees e ON e.id = pb.employee_id
-              WHERE r.status = 'finalized' AND YEAR(r.period_end) = ? AND MONTH(r.period_end) = ?" . user_scope_sql('e') . ' ORDER BY b.code, e.last_name', [$y, $m]);
+              WHERE r.status = 'finalized' AND YEAR(r.period_end) = ? AND MONTH(r.period_end) = ?" . salary_scope_sql('e') . ' ORDER BY b.code, e.last_name', [$y, $m]);
 $by = [];
 foreach ($rows as $r) {
     $b = $r['branch_id'];
@@ -32,6 +32,7 @@ foreach ($rows as $r) {
 $multi = array_filter($multi, fn($b) => count($b) > 1);
 page_header('Branch Cost Allocation', ['subtitle' => 'Payroll cost per branch / cost center for ' . h(month_name($m) . ' ' . $y) . '. ' . count($multi) . ' employee(s) worked in more than one branch.',
     'actions' => '<button type="button" class="btn" data-print>Print</button> <button type="button" class="btn" data-save-pdf data-pdf-root=".content" data-pdf-size="landscape">Save as PDF</button>']);
+echo salary_restricted_note('this report');   // v32
 ?>
 <form class="card filters" method="get"><input type="hidden" name="p" value="rpt_branch"><label>Month<input type="month" name="month" value="<?= h($month) ?>" data-autosubmit></label></form>
 <?php if (!$by): ?><div class="card"><p class="muted">No finalized payroll for this month.</p></div><?php endif; ?>

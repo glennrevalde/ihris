@@ -20,7 +20,7 @@ if ($route === 'closing_print') {
         throw new RuntimeException('Period closing not found.');
     }
     $runs = rows('SELECT r.run_no, r.run_type, r.period_start, r.period_end, r.pay_date, COUNT(pi.id) AS n, SUM(pi.gross_pay) AS gross, SUM(pi.net_pay) AS net
-                  FROM payroll_items pi JOIN payroll_runs r ON r.id = pi.run_id WHERE pi.closing_id = ? GROUP BY r.id ORDER BY r.pay_date', [(int)$pc['id']]);
+                  FROM payroll_items pi JOIN payroll_runs r ON r.id = pi.run_id WHERE pi.closing_id = ?' . salary_excl_sql('pi.employee_id') . ' GROUP BY r.id ORDER BY r.pay_date', [(int)$pc['id']]);   // v32
     print_header('Period Closing ' . $pc['closing_no']);
     echo company_letterhead(!empty($pc['branch_id']) ? row('SELECT * FROM branches WHERE id = ?', [(int)$pc['branch_id']]) : null); ?>
     <h1>Period Closing Report</h1>

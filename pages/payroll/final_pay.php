@@ -505,8 +505,8 @@ if ($id) {
     page_footer();
     exit;
 }
-$list = rows('SELECT fp.*, e.first_name, e.last_name, e.middle_name, e.suffix, e.employee_no FROM final_pays fp JOIN employees e ON e.id = fp.employee_id WHERE 1=1' . user_scope_sql('e') . ' ORDER BY fp.created_at DESC');
-$pendingSep = rows("SELECT e.* FROM employees e WHERE e.status = 'separated' AND e.id NOT IN (SELECT employee_id FROM final_pays WHERE status <> 'cancelled')" . user_scope_sql('e') . ' ORDER BY e.date_separated DESC');
+$list = rows('SELECT fp.*, e.first_name, e.last_name, e.middle_name, e.suffix, e.employee_no FROM final_pays fp JOIN employees e ON e.id = fp.employee_id WHERE 1=1' . salary_scope_sql('e') . ' ORDER BY fp.created_at DESC');   // v32: salary restriction
+$pendingSep = rows("SELECT e.* FROM employees e WHERE e.status = 'separated' AND e.id NOT IN (SELECT employee_id FROM final_pays WHERE status <> 'cancelled')" . salary_scope_sql('e') . ' ORDER BY e.date_separated DESC');
 $pre = get('employee_id') ? row('SELECT * FROM employees WHERE id = ?', [(int)get('employee_id')]) : null;
 page_header('Final Pay', ['subtitle' => 'Consolidates last salary, pro-rated 13th month, unused leave conversion and loan / accountability offsets — to be released within ' . (int)setting('final_pay_days', 30) . ' days from separation.']);
 ?>
@@ -514,7 +514,7 @@ page_header('Final Pay', ['subtitle' => 'Consolidates last salary, pro-rated 13t
   <div class="card"><h2>Compute final pay</h2>
     <form method="post"><?= csrf_field() ?><input type="hidden" name="_action" value="compute">
       <div class="form-grid">
-        <div class="field wide"><label>Employee</label><select name="employee_id" required><?= options(employee_options(false), $pre['id'] ?? null, '— select —') ?></select></div>
+        <div class="field wide"><label>Employee</label><select name="employee_id" required><?= options(salary_employee_options(false), $pre['id'] ?? null, '— select —') ?></select></div>
         <div class="field"><label>Separation date (last day)</label><input type="date" name="separation_date" value="<?= h($pre['date_separated'] ?? today()) ?>" required></div>
       </div>
       <div class="form-actions"><button class="btn btn-primary">Compute</button></div>

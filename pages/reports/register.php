@@ -20,7 +20,9 @@ if (!$run) {
 }
 $items = rows('SELECT pi.*, e.employee_no, e.first_name, e.last_name, e.middle_name, e.suffix, e.tin, ou.name AS ou_name, b.code AS branch_code
                FROM payroll_items pi JOIN employees e ON e.id = pi.employee_id LEFT JOIN org_units ou ON ou.id = pi.org_unit_id LEFT JOIN branches b ON b.id = pi.default_branch_id
-               WHERE pi.run_id = ?' . user_scope_sql('e') . ' ORDER BY ou.name, e.last_name, e.first_name', [$runId]);
+               WHERE pi.run_id = ?' . salary_scope_sql('e') . ' ORDER BY ou.name, e.last_name, e.first_name', [$runId]);
+// v32: employees on the user's salary restriction list are left out
+$salHidden = salary_hidden_count('FROM payroll_items pi JOIN employees e ON e.id = pi.employee_id WHERE pi.run_id = ?' . user_scope_sql('e'), [$runId]);
 $cols = ['basic_pay' => 'Basic', 'absence_deduction' => 'Absences', 'late_deduction' => 'Late', 'undertime_deduction' => 'Undertime', 'holiday_pay' => 'Holiday', 'premium_pay' => 'RD/Hol prem.',
     'ot_pay' => 'Overtime', 'nd_pay' => 'Night diff.', 'benefits_nontax' => 'De minimis / NT', 'benefits_other' => '13th & other (NT)', 'benefits_taxable' => 'Taxable benefits', 'other_earnings' => 'Other taxable',
     'gross_pay' => 'GROSS', 'sss_ee' => 'SSS', 'phic_ee' => 'PhilHealth', 'hdmf_ee' => 'Pag-IBIG', 'hdmf_ee_voluntary' => 'HDMF vol.', 'withholding_tax' => 'W/Tax',
@@ -36,6 +38,7 @@ echo company_letterhead(null, report_run_branch_ids($runId));   // v27: the logo
 ?>
 <h1>Payroll Register</h1>
 <p class="center"><?= h($run['run_no']) ?>, <?= h(RUN_TYPES[$run['run_type']]) ?>, <?= h($run['pay_group_name']) ?>, Period <?= h(fmt_date($run['period_start'])) ?> – <?= h(fmt_date($run['period_end'])) ?>, Pay date <?= h(fmt_date($run['pay_date'])) ?>, Status: <?= h(strtoupper($run['status'])) ?></p>
+<?= salary_print_note($salHidden) ?>
 <table class="doc-table" style="font-size:10px">
   <thead><tr><th>#</th><th>Employee</th><th class="num">Days</th><?php foreach ($cols as $c): ?><th class="num"><?= h($c) ?></th><?php endforeach; ?><th>Signature</th></tr></thead>
   <tbody>

@@ -7,12 +7,17 @@
  *
  * v13: the assignment decides which employees the user sees anywhere (app/engine/scope.php). Nothing
  * ticked = no employee; "All companies / branches" and "All departments" lift the limit of a side.
+ *
+ * v32: Salary restriction. The employees (e.g. the top management) whose pay this user may not see: their
+ * basic salary shows Hidden and they are left out of the payslips, payroll registers and pay reports.
  */
 require_super_user();
 
 $userId = (int)get('user', 0);
 // the Super Admin support account and join requests not yet approved are not listed
-$users = rows("SELECT u.*, e.employee_no, (SELECT COUNT(*) FROM user_permission_overrides o WHERE o.user_id = u.id) AS overrides
+$salxOn = salary_restriction_supported();
+$users = rows("SELECT u.*, e.employee_no, (SELECT COUNT(*) FROM user_permission_overrides o WHERE o.user_id = u.id) AS overrides"
+               . ($salxOn ? ', (SELECT COUNT(*) FROM user_salary_exclusions x WHERE x.user_id = u.id) AS salx' : ', 0 AS salx') . "
                FROM users u LEFT JOIN employees e ON e.id = u.employee_id
                WHERE u.is_support = 0 AND (u.reg_status IS NULL OR u.reg_status = 'approved') ORDER BY u.is_active DESC, u.full_name");
 if (!$userId && $users) {
@@ -58,6 +63,13 @@ if (is_post()) {
                 audit('admin', 'user_assignment_update', 'users', $uid, ['branches' => $allB ? 'all' : count($okB), 'departments' => $allU ? 'all' : count($okU)]);
             }
             unset($GLOBALS['__scope']);
+            // v32: salary restriction
+            if ($salxOn && post('salx_present')) {
+                $n = salary_restriction_save($uid, (array)post('salx', []));
+                if ($n !== null) {
+                    $summary .= ($summary !== '' ? '; ' : '') . ($n ? 'salary restricted for ' . $n . ' employee(s)' : 'salary restriction removed');
+                }
+            }
             if (!is_super_user(row('SELECT * FROM users WHERE id = ?', [$uid])) && scope_def(row('SELECT * FROM users WHERE id = ?', [$uid]))['none']) {
                 flash('warning', $u['full_name'] . ' has no company / branch and no department assigned, so the account sees no employee.');
             }
@@ -85,9 +97,12 @@ if (is_post()) {
                 insert('user_scopes', ['user_id' => $uid, 'scope_type' => $s['scope_type'], 'ref_id' => $s['ref_id']]);
             }
             update('users', ['scope_all_branches' => (int)$from['scope_all_branches'], 'scope_all_units' => (int)$from['scope_all_units']], 'id = ?', [$uid]);
+            if ($salxOn) {   // v32: the salary restriction is copied too
+                salary_restriction_save($uid, q('SELECT employee_id FROM user_salary_exclusions WHERE user_id = ?', [(int)$from['id']])->fetchAll(PDO::FETCH_COLUMN));
+            }
             audit('admin', 'user_access_copy', 'users', $uid, ['from' => $from['username']]);
             mc_sync_user($uid);
-            flash('success', 'Role, permissions and assignment copied from ' . $from['full_name'] . '.');
+            flash('success', 'Role, permissions, assignment and salary restriction copied from ' . $from['full_name'] . '.');
         }
     } catch (RuntimeException $e) {
         flash('error', $e->getMessage());
@@ -100,10 +115,15 @@ foreach ($user ? rows('SELECT * FROM user_scopes WHERE user_id = ?', [$userId]) 
     $scopes[$s['scope_type']][] = (int)$s['ref_id'];
 }
 $branches = rows('SELECT * FROM branches ORDER BY company_code, branch_code, code');
+// v32: salary restriction picker
+$salx = $user && $salxOn ? array_map('intval', q('SELECT employee_id FROM user_salary_exclusions WHERE user_id = ?', [$userId])->fetchAll(PDO::FETCH_COLUMN)) : [];
+$salxEmps = $user && $salxOn ? rows("SELECT e.id, e.employee_no, e.last_name, e.first_name, e.middle_name, e.suffix, e.position, e.status, e.org_unit_id, ou.name AS ou_name, b.code AS branch_code
+                                     FROM employees e LEFT JOIN org_units ou ON ou.id = e.org_unit_id LEFT JOIN branches b ON b.id = e.default_branch_id
+                                     ORDER BY e.status = 'active' DESC, e.last_name, e.first_name") : [];
 $units = rows('SELECT * FROM org_units WHERE is_active = 1 ORDER BY name');
 
 page_header('User Access & Permissions', [
-    'subtitle' => 'Role permissions are the defaults of a user. Customize a user with Allow or Deny, check the Effective Access, and limit the employees the user works on to some companies or departments.',
+    'subtitle' => 'Role permissions are the defaults of a user. Customize a user with Allow or Deny, check the Effective Access, limit the employees the user works on to some companies or departments, and restrict the salary of chosen employees.',
     'actions' => '<a class="btn" href="' . url('roles') . '">Roles</a><a class="btn" href="' . url('users') . '">User accounts</a><a class="btn" href="' . url('audit', ['module' => 'admin']) . '">Audit trail</a>',
 ]);
 ?>
@@ -114,7 +134,7 @@ page_header('User Access & Permissions', [
       <?php foreach ($users as $u): ?>
         <a class="<?= (int)$u['id'] === $userId ? 'active' : '' ?>" href="<?= url('user_access', ['user' => $u['id']]) ?>">
           <span class="ln-dot <?= $u['is_active'] ? 'on' : '' ?>"></span>
-          <span class="ln-main"><strong><?= h($u['full_name']) ?></strong><small><?= h($u['username']) ?>, <?= h(user_role_name($u)) ?><?= (int)$u['overrides'] ? ', customized' : '' ?><?= !is_super_user($u) && scope_def($u)['none'] ? ', <span class="state-off">no employee assigned</span>' : '' ?></small></span>
+          <span class="ln-main"><strong><?= h($u['full_name']) ?></strong><small><?= h($u['username']) ?>, <?= h(user_role_name($u)) ?><?= (int)$u['overrides'] ? ', customized' : '' ?><?= (int)$u['salx'] && !is_super_user($u) ? ', salary restricted (' . (int)$u['salx'] . ')' : '' ?><?= !is_super_user($u) && scope_def($u)['none'] ? ', <span class="state-off">no employee assigned</span>' : '' ?></small></span>
         </a>
       <?php endforeach; ?>
     </div>
@@ -204,6 +224,39 @@ page_header('User Access & Permissions', [
           <?php if (!$locked): ?><div class="scope-tools"><button type="button" class="btn btn-xs" data-scope-tick="units">Tick all</button><button type="button" class="btn btn-xs" data-scope-clear="units">Clear</button></div><?php endif; ?>
         </div>
       </div>
+
+      <?php if ($salxOn): $salxUnits = []; foreach ($salxEmps as $se) { if ($se['org_unit_id']) $salxUnits[(int)$se['org_unit_id']] = $se['ou_name']; } asort($salxUnits); ?>
+      <div class="card salx-card" data-salx>
+        <input type="hidden" name="salx_present" value="1">
+        <div class="salx-head">
+          <div>
+            <h2>Salary restriction</h2>
+            <p class="muted small">Tick the employees whose pay <?= h($user['full_name']) ?> may not see, such as the top management. They stay in the user's employee lists, but their basic salary shows <em>Hidden</em> and they are left out of payslips, payroll registers and pay reports. The user's own record is never restricted.</p>
+          </div>
+          <div class="salx-count"><strong data-salx-count><?= count($salx) ?></strong><span>restricted</span></div>
+        </div>
+        <?php if ($super): ?>
+          <div class="callout">This account holds the Super Admin role: it sees every salary, so a restriction does not apply<?= $salx ? ' (the ' . count($salx) . ' employee(s) ticked earlier take effect if the role changes)' : '' ?>.</div>
+        <?php endif; ?>
+        <div class="salx-tools">
+          <input type="search" data-salx-search placeholder="Search name, employee no., position…" aria-label="Search employees">
+          <select data-salx-unit aria-label="Department"><option value="">All departments</option><?php foreach ($salxUnits as $id => $nm): ?><option value="<?= (int)$id ?>"><?= h($nm) ?></option><?php endforeach; ?></select>
+          <label class="check salx-only"><input type="checkbox" data-salx-only<?= $salx ? ' checked' : '' ?>> Restricted only</label>
+          <?php if (!$locked): ?><span class="salx-btns"><button type="button" class="btn btn-xs" data-salx-tick>Tick shown</button><button type="button" class="btn btn-xs" data-salx-clear>Untick shown</button></span><?php endif; ?>
+        </div>
+        <div class="salx-list" data-salx-list>
+          <?php foreach ($salxEmps as $se): $on = in_array((int)$se['id'], $salx, true); $own = (int)$se['id'] === (int)($user['employee_id'] ?? 0); ?>
+            <label class="salx-row<?= $on ? ' is-on' : '' ?><?= $se['status'] !== 'active' ? ' is-inactive' : '' ?>" data-unit="<?= (int)$se['org_unit_id'] ?>">
+              <input type="checkbox" name="salx[]" value="<?= (int)$se['id'] ?>" <?= checked($on) ?><?= $locked || $own ? ' disabled' : '' ?>>
+              <span class="salx-name"><strong><?= h(trim($se['last_name'] . ', ' . $se['first_name'] . ' ' . ($se['suffix'] ?? ''))) ?></strong><small><?= h($se['employee_no']) ?><?= $se['position'] ? ', ' . h($se['position']) : '' ?><?= $own ? ', own account' : '' ?></small></span>
+              <span class="salx-unit"><?= h($se['ou_name'] ?? '') ?><?= $se['branch_code'] ? '<small>' . h($se['branch_code']) . '</small>' : '' ?></span>
+              <span class="salx-state"><?= $se['status'] !== 'active' ? h(label($se['status'])) : '' ?></span>
+            </label>
+          <?php endforeach; ?>
+          <div class="salx-none muted small" data-salx-none hidden>No employee matches.</div>
+        </div>
+      </div>
+      <?php endif; ?>
 
       <?php if (!$locked): ?>
       <div class="toolbar">

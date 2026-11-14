@@ -115,7 +115,7 @@ function prpt_items(array $scope, array $f): array
                         b.code AS branch_code, b.name AS branch_name, b.company_name, ou.name AS unit_name
                  FROM payroll_items pi JOIN payroll_runs r ON r.id = pi.run_id JOIN employees e ON e.id = pi.employee_id
                  LEFT JOIN branches b ON b.id = pi.default_branch_id LEFT JOIN org_units ou ON ou.id = pi.org_unit_id
-                 WHERE ' . implode(' AND ', $w) . user_scope_sql('e') . '
+                 WHERE ' . implode(' AND ', $w) . salary_scope_sql('e') . '
                  ORDER BY b.company_name, b.code, ou.name, e.last_name, e.first_name, e.employee_no, r.period_end, r.id', $p);
 }
 

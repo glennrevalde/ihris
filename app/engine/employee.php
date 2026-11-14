@@ -166,7 +166,7 @@ function employee_validate(array $d, int $id = 0): array
         'position' => 'Position', 'basic_rate' => 'Basic rate', 'pay_group_id' => 'Pay group', 'default_branch_id' => 'Default branch'];
     $errors = [];
     foreach ($required as $k => $l) {
-        if ($k === 'basic_rate' && function_exists('salary_can') && current_user() && !salary_can('edit')) {
+        if ($k === 'basic_rate' && function_exists('salary_can') && current_user() && !salary_can('edit', $id ?: null)) {
             continue;   // set by a user with the Basic Salary edit right
         }
         if (!isset($d[$k]) || $d[$k] === null || $d[$k] === '' || ($k === 'basic_rate' && (float)$d[$k] <= 0)) {

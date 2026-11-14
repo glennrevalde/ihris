@@ -128,6 +128,7 @@ function scope_summary(array $u): string
  */
 function scope_authorize(string $route): void
 {
+    salary_authorize($route);   // v32
     if (scope_def()['all']) {
         return;
     }
@@ -200,10 +201,14 @@ function scope_deny(): void
     exit;
 }
 
-/* ===================================================================== Basic Salary rights (v13) */
+/* ===================================================================== Basic Salary rights (v13, v32) */
 
-/** May the user see ('view') or change ('edit') the basic salary of the employees? */
-function salary_can(string $action = 'view'): bool
+/**
+ * May the user see ('view') or change ('edit') the basic salary of the employees?
+ * v32: with an employee id, the answer is also No for an employee on the user's salary restriction list
+ * (System > User Access & Permissions, "Salary restriction").
+ */
+function salary_can(string $action = 'view', ?int $empId = null): bool
 {
     if (!current_user()) {
         return false;
@@ -211,16 +216,268 @@ function salary_can(string $action = 'view'): bool
     if (is_super_user()) {
         return true;
     }
+    if ($empId && salary_restricted($empId)) {
+        return false;
+    }
     if ($action === 'edit') {
         return can('employee_salary.edit') && can('employee_salary.view');
     }
     return can('employee_salary.view');
 }
 
-/** The basic salary as shown to the user: the amount, or a hidden mark. */
-function salary_show($amount, string $suffix = ''): string
+/** The basic salary as shown to the user: the amount, or a hidden mark (v32: per employee when an id is given). */
+function salary_show($amount, string $suffix = '', ?int $empId = null): string
 {
-    return salary_can('view') ? money($amount) . $suffix : '<span class="muted salary-hidden" title="Hidden: no Basic Salary view right">Hidden</span>';
+    if (salary_can('view', $empId)) {
+        return money($amount) . $suffix;
+    }
+    $why = $empId && salary_restricted($empId) ? 'Hidden: salary restricted for your account' : 'Hidden: no Basic Salary view right';
+    return '<span class="muted salary-hidden" title="' . h($why) . '">Hidden</span>';
+}
+
+/* --------------------------------------------------------------------- Salary restriction (v32)
+ * A Super Admin lists, per user, the employees whose pay that user may not see (typically the top
+ * management). Table user_salary_exclusions (user_id, employee_id). For the user, these employees:
+ *   - stay in the employee lists and 201 files (the assignment above decides who is listed),
+ *   - show "Hidden" in place of the basic salary and the rates (201 file, employee list, 201 Masterlisting,
+ *     batch edit, import, salary scaling, evaluation), and their salary cannot be changed by the user,
+ *   - are left out of the payslips, the payroll registers and every report that shows pay per employee,
+ *     with a note saying how many were left out.
+ * The employee linked to the user's own account is never restricted (self-service). The Super Admin
+ * sees every salary.
+ */
+
+/** Ids of the employees whose pay the user may not see ([] = no restriction). */
+function salary_restricted_ids(?array $u = null): array
+{
+    $u = $u ?? current_user();
+    if (!$u || is_super_user($u === current_user() ? null : $u)) {
+        return [];
+    }
+    $uid = (int)$u['id'];
+    $key = (function_exists('active_db_name') ? active_db_name() : '') . '|' . $uid;
+    if (!isset($GLOBALS['__salx'][$key])) {
+        $ids = [];
+        if (salary_restriction_supported()) {
+            $ids = array_map('intval', q('SELECT employee_id FROM user_salary_exclusions WHERE user_id = ?', [$uid])->fetchAll(PDO::FETCH_COLUMN));
+        }
+        $own = (int)($u['employee_id'] ?? 0);
+        $GLOBALS['__salx'][$key] = array_values(array_diff($ids, [$own]));
+    }
+    return $GLOBALS['__salx'][$key];
+}
+
+/** Is this employee on the user's salary restriction list? */
+function salary_restricted(int $empId, ?array $u = null): bool
+{
+    return $empId > 0 && in_array($empId, salary_restricted_ids($u), true);
+}
+
+/** " AND col NOT IN (...)" leaving out the restricted employees ('' = no restriction). $col is the employee id column. */
+function salary_excl_sql(string $col): string
+{
+    $ids = salary_restricted_ids();
+    return $ids ? " AND $col NOT IN (" . implode(',', $ids) . ')' : '';
+}
+
+/** The assignment limit (scope_sql) plus the salary restriction, for lists that show pay per employee. */
+function salary_scope_sql(string $a = 'e'): string
+{
+    return scope_sql($a) . salary_excl_sql("$a.id");
+}
+
+/** Employee picker of a pay page: employee_options() without the restricted employees. */
+function salary_employee_options(bool $activeOnly = true): array
+{
+    $o = employee_options($activeOnly);
+    $ids = salary_restricted_ids();
+    return $ids ? array_diff_key($o, array_flip($ids)) : $o;
+}
+
+/** Drop the restricted employees from rows; $hidden receives how many were dropped. */
+function salary_filter_rows(array $rows, string $empKey = 'employee_id', ?int &$hidden = null): array
+{
+    $ids = salary_restricted_ids();
+    $hidden = 0;
+    if (!$ids) {
+        return $rows;
+    }
+    $out = [];
+    foreach ($rows as $k => $r) {
+        if (in_array((int)($r[$empKey] ?? 0), $ids, true)) {
+            $hidden++;
+            continue;
+        }
+        $out[$k] = $r;
+    }
+    return array_is_list_compat($rows) ? array_values($out) : $out;
+}
+
+/** array_is_list() for PHP 7. */
+function array_is_list_compat(array $a): bool
+{
+    $i = 0;
+    foreach ($a as $k => $_) {
+        if ($k !== $i++) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/** How many restricted employees an employees query would have returned (for the "left out" note). */
+function salary_hidden_count(string $fromWhere, array $params = [], string $col = 'e.id'): int
+{
+    $ids = salary_restricted_ids();
+    if (!$ids) {
+        return 0;
+    }
+    return (int)val("SELECT COUNT(DISTINCT $col) $fromWhere AND $col IN (" . implode(',', $ids) . ')', $params);
+}
+
+/** The note shown above a list or report that left restricted employees out ('' when none). */
+function salary_hidden_note(int $n, string $what = 'this list', string $extra = ''): string
+{
+    if ($n <= 0) {
+        return '';
+    }
+    return '<div class="callout salary-note"><strong>' . $n . ' employee' . ($n === 1 ? ' is' : 's are') . ' not shown in ' . h($what) . '.</strong> '
+        . 'Their pay is restricted for your account (System, User Access &amp; Permissions, Salary restriction). Totals cover the employees shown.'
+        . ($extra !== '' ? ' ' . h($extra) : '') . '</div>';
+}
+
+/**
+ * The note of a report that leaves out every restricted employee of the user ('' when the user has no
+ * restriction). Used where counting the employees of the selection would take another query.
+ */
+function salary_restricted_note(string $what = 'this report', bool $print = false): string
+{
+    $ids = salary_restricted_ids();
+    if (!$ids) {
+        return '';
+    }
+    $n = (int)val('SELECT COUNT(*) FROM employees e WHERE e.id IN (' . implode(',', $ids) . ')' . scope_sql('e'));
+    if (!$n) {
+        return '';
+    }
+    if ($print) {
+        return '<div class="doc-meta"><div><em>The ' . $n . ' employee(s) whose pay is restricted for the user who printed this report are not included.</em></div></div>';
+    }
+    return '<div class="callout salary-note"><strong>The ' . $n . ' employee' . ($n === 1 ? '' : 's') . ' whose pay is restricted for your account ' . ($n === 1 ? 'is' : 'are') . ' not included in ' . h($what) . '.</strong> '
+        . 'System, User Access &amp; Permissions, Salary restriction. Totals cover the employees shown.</div>';
+}
+
+/** The same note for a printout ('' when none). */
+function salary_print_note(int $n): string
+{
+    return $n > 0 ? '<div class="doc-meta"><div><em>' . $n . ' employee' . ($n === 1 ? ' is' : 's are') . ' not included: salary restricted for the user who printed this report.</em></div></div>' : '';
+}
+
+/** Refuse a page about the pay of a restricted employee. */
+function salary_deny(): void
+{
+    if (function_exists('wants_json') && wants_json()) {
+        json_response(['error' => 'The pay of this employee is restricted for your account.', 'status' => 403], 403);
+    }
+    http_response_code(403);
+    $GLOBALS['__perm_denied'] = true;
+    page_header('Access denied');
+    echo '<div class="card denied-card"><div class="denied-code">403</div><div><h2>Salary restricted</h2>'
+        . '<p class="muted">The pay of this employee is restricted for your account (System, User Access &amp; Permissions, Salary restriction). Ask your system administrator if you need access.</p>'
+        . '<p><a class="btn" href="' . url('dashboard') . '">Go to the dashboard</a></p></div></div>';
+    page_footer();
+    exit;
+}
+
+/**
+ * Replace the salary restriction list of a user (System > User Access & Permissions).
+ * Returns the new count when the list changed (audited), null when nothing changed.
+ */
+function salary_restriction_save(int $uid, array $empIds): ?int
+{
+    $u = row('SELECT * FROM users WHERE id = ?', [$uid]);
+    if (!$u || !salary_restriction_supported()) {
+        return null;
+    }
+    $empIds = array_values(array_unique(array_filter(array_map('intval', $empIds))));
+    $own = (int)($u['employee_id'] ?? 0);
+    $empIds = array_values(array_diff($empIds, [$own]));   // the user's own record is never restricted
+    $ok = $empIds ? array_map('intval', q('SELECT id FROM employees WHERE id IN (' . in_list($empIds) . ')', $empIds)->fetchAll(PDO::FETCH_COLUMN)) : [];
+    $old = array_map('intval', q('SELECT employee_id FROM user_salary_exclusions WHERE user_id = ?', [$uid])->fetchAll(PDO::FETCH_COLUMN));
+    sort($ok);
+    sort($old);
+    if ($ok === $old) {
+        return null;
+    }
+    $added = array_values(array_diff($ok, $old));
+    $removed = array_values(array_diff($old, $ok));
+    if ($removed) {
+        q('DELETE FROM user_salary_exclusions WHERE user_id = ? AND employee_id IN (' . in_list($removed) . ')', array_merge([$uid], $removed));
+    }
+    foreach ($added as $eid) {
+        insert('user_salary_exclusions', ['user_id' => $uid, 'employee_id' => $eid, 'created_by' => user_id(), 'created_at' => now()]);
+    }
+    $nos = function (array $ids) {
+        return $ids ? q('SELECT employee_no FROM employees WHERE id IN (' . in_list($ids) . ') ORDER BY employee_no', $ids)->fetchAll(PDO::FETCH_COLUMN) : [];
+    };
+    audit('admin', 'user_salary_restriction', 'users', $uid, ['user' => $u['username'], 'restricted' => count($ok), 'added' => $nos($added), 'removed' => $nos($removed)]);
+    unset($GLOBALS['__salx']);
+    return count($ok);
+}
+
+/**
+ * v32: the pages about pay refuse a request that names an employee on the user's salary restriction list
+ * (the employee filter of a report, a payslip, a final pay ...). Called by scope_authorize().
+ */
+const SALARY_ROUTES = ['payslip', 'payslips_print', 'pay_register', 'pay_register2', 'pay_inquiry', 'bank_file', 'final_pay', 'retro',
+    'rpt_periodical', 'rpt_monthly_contrib', 'rpt_ytd_reports', 'rpt_bank_listing', 'rpt_cash_listing', 'rpt_register', 'rpt_earn_ded',
+    'rpt_13th', 'rpt_monthly', 'rpt_branch', 'rpt_remittance', 'rpt_ytd', 'rpt_2316'];
+
+function salary_authorize(string $route): void
+{
+    if (!in_array($route, SALARY_ROUTES, true) || !salary_restricted_ids()) {
+        return;
+    }
+    $ids = [];
+    foreach ([$_GET, $_POST] as $src) {
+        foreach (['employee_id', 'emp', 'emp_id', 'employee_ids'] as $k) {
+            foreach (isset($src[$k]) ? (array)$src[$k] : [] as $v) {
+                if (is_scalar($v) && (int)$v > 0) {
+                    $ids[] = (int)$v;
+                }
+            }
+        }
+    }
+    $rid = (int)($_GET['id'] ?? $_POST['id'] ?? 0);
+    if ($rid > 0 && in_array($route, ['payslip', 'final_pay'], true)) {
+        try {
+            $e = val($route === 'payslip' ? 'SELECT employee_id FROM payroll_items WHERE id = ?' : 'SELECT employee_id FROM final_pays WHERE id = ?', [$rid]);
+            if ($e) {
+                $ids[] = (int)$e;
+            }
+        } catch (Throwable $x) {
+        }
+    }
+    foreach (array_unique($ids) as $id) {
+        if (salary_restricted($id)) {
+            salary_deny();
+        }
+    }
+}
+
+/** Does the database have the v25 table yet? */
+function salary_restriction_supported(): bool
+{
+    static $ok = [];
+    $db = function_exists('active_db_name') ? active_db_name() : '';
+    if (!isset($ok[$db])) {
+        try {
+            $ok[$db] = (bool)val("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'user_salary_exclusions'");
+        } catch (Throwable $e) {
+            $ok[$db] = false;
+        }
+    }
+    return $ok[$db];
 }
 
 /** The same limit for a LEFT JOIN of the employees: rows without an employee (unmatched logs ...) stay visible. */
@@ -250,10 +507,12 @@ function scope_fits(array $d): bool
 }
 
 /** Audit details without the salary figures, for a user without the Basic Salary view right. */
-function salary_mask_details(?string $details): string
+function salary_mask_details(?string $details, ?string $entity = null, $entityId = null): string
 {
     $details = (string)$details;
-    if ($details === '' || salary_can('view') || !preg_match('/basic_rate|_rate"/', $details)) {
+    // v32: an employee on the user's salary restriction list is masked too
+    $empId = in_array((string)$entity, ['employees', 'employee'], true) && ctype_digit((string)$entityId) ? (int)$entityId : null;
+    if ($details === '' || salary_can('view', $empId) || !preg_match('/basic_rate|_rate"/', $details)) {
         return $details;
     }
     $data = json_decode($details, true);

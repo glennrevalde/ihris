@@ -25,6 +25,7 @@ if (get('print')) {
     print_header('Payroll Journal — ' . $run['run_no']);
     echo company_letterhead(null, report_run_branch_ids($runId));   // v27: the logo(s) of the companies of the run
     echo '<h1>Payroll Journal Entry</h1>';
+    echo salary_print_note((int)($j['salary_hidden'] ?? 0));   // v32
     echo '<div class="doc-meta"><div><strong>' . h($run['run_no']) . '</strong>, ' . h($run['pay_group_name']) . '</div>'
         . '<div>' . h(fmt_date($run['period_start'])) . ' – ' . h(fmt_date($run['period_end'])) . ', pay date ' . h(fmt_date($run['pay_date'])) . '</div></div>';
     echo '<table class="doc-table"><thead><tr><th>Account</th><th>Account title</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead><tbody>';
@@ -42,6 +43,7 @@ page_header('Payroll Journal (GL)', [
         . '<a class="btn" href="' . url('rpt_journal', ['run_id' => $runId, 'csv' => 1]) . '">Export CSV</a>'
         . '<a class="btn" href="' . url('gl_accounts') . '">Payroll Code Table</a>',
 ]);
+echo salary_hidden_note((int)($j['salary_hidden'] ?? 0), 'this journal');   // v32
 ?>
 <form method="get" class="card filters">
   <input type="hidden" name="p" value="rpt_journal">

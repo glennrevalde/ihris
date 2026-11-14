@@ -78,6 +78,7 @@ if (get('print')) {
     echo company_letterhead($f['branch_id'] ? row('SELECT * FROM branches WHERE id = ?', [$f['branch_id']]) : null);
     echo '<h1>' . h($heading) . '</h1>';
     echo '<div class="doc-meta"><div>' . h($scopeLabel) . ($layout === 'summary' ? ', summary per code' : ', per employee') . '</div><div>Printed ' . h(fmt_dt(now())) . '</div></div>';
+    echo salary_restricted_note('', true);   // v32
     echo report_selection_html($f, [], true);   // organizational unit, company / branch, code chosen on the form
     if ($layout === 'summary') {
         echo '<table class="doc-table"><thead><tr><th>Type</th><th>Code</th><th>Description</th><th>Source</th><th class="num">Employees</th><th class="num">Amount</th></tr></thead><tbody>';
@@ -102,6 +103,7 @@ page_header('Earnings & Deductions Report', [
     'subtitle' => 'Earnings and deductions from Fixed Transactions, Employee\'s Transactions, Employee Term Loan/Payables and Employee Benefits, per employee. Salary items are not included.',
     'actions' => '<a class="btn" target="_blank" href="' . h(url('rpt_earn_ded', $keep + ['print' => 1])) . '">Print</a><a class="btn" href="' . h(url('rpt_earn_ded', $keep + ['csv' => 1])) . '">Export CSV</a>',
 ]);
+echo salary_restricted_note('this report');   // v32
 ?>
 <form method="get" class="card filters">
   <input type="hidden" name="p" value="rpt_earn_ded">

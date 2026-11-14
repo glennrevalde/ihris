@@ -71,8 +71,8 @@ if (is_post()) {
         update('evaluations', ['status' => 'draft', 'finalized_at' => null], 'id = ?', [$id]);
         audit('pis', 'eval_reopen', 'evaluations', $id);
         flash('success', 'Evaluation reopened.');
-    } elseif ($act === 'apply' && $isHr && $locked && !$ev['applied_at'] && !salary_can('edit')) {
-        flash('error', 'Applying the recommendation changes the basic salary: it needs the Basic Salary edit right.');
+    } elseif ($act === 'apply' && $isHr && $locked && !$ev['applied_at'] && !salary_can('edit', (int)$ev['employee_id'])) {
+        flash('error', salary_restricted((int)$ev['employee_id']) ? 'Applying the recommendation changes the basic salary, which is restricted for your account for this employee.' : 'Applying the recommendation changes the basic salary: it needs the Basic Salary edit right.');
     } elseif ($act === 'apply' && $isHr && $locked && !$ev['applied_at']) {
         $eff = post('effective_date') ?: add_days($ev['period_end'], 1);
         $mode = post('apply_mode');
@@ -181,8 +181,8 @@ page_header('Evaluation — ' . full_name($emp, false), ['back' => url('evaluati
   </div>
   <div class="card"><h3>Actions</h3>
     <?php if ($locked && $isHr): ?>
-      <?php if (!$ev['applied_at'] && !salary_can('edit')): ?>
-      <p class="small muted">Applying the salary step or merit increase to the masterfile needs the Basic Salary edit right.</p>
+      <?php if (!$ev['applied_at'] && !salary_can('edit', (int)$ev['employee_id'])): ?>
+      <p class="small muted"><?= salary_restricted((int)$ev['employee_id']) ? 'The salary of this employee is restricted for your account, so the salary step or merit increase is applied by another user.' : 'Applying the salary step or merit increase to the masterfile needs the Basic Salary edit right.' ?></p>
       <?php elseif (!$ev['applied_at']): ?>
       <form method="post"><?= csrf_field() ?><input type="hidden" name="_action" value="apply">
         <div class="form-grid">

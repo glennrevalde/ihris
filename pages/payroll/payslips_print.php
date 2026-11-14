@@ -37,7 +37,9 @@ if ($groupIds) {
     $where[] = sql_in('e.employee_group_id', $groupIds);
 }
 $ids = $run ? array_map('intval', q('SELECT pi.id FROM payroll_items pi JOIN employees e ON e.id = pi.employee_id WHERE ' . implode(' AND ', $where)
-    . user_scope_sql('e') . ' ORDER BY e.last_name, e.first_name', $params)->fetchAll(PDO::FETCH_COLUMN)) : [];
+    . salary_scope_sql('e') . ' ORDER BY e.last_name, e.first_name', $params)->fetchAll(PDO::FETCH_COLUMN)) : [];
+// v32: the payslips of the employees on the user's salary restriction list are left out
+$salHidden = $run ? salary_hidden_count('FROM payroll_items pi JOIN employees e ON e.id = pi.employee_id WHERE ' . implode(' AND ', $where) . user_scope_sql('e'), $params) : 0;
 
 $mode = (string)get('out', '');
 if ($mode && $ids) {
@@ -96,7 +98,7 @@ page_header('Print Payslips', [
   <?= multi_pick('org_unit_id', 'Department', pairs('SELECT id, name FROM org_units WHERE is_active = 1 ORDER BY name'), $unitIds, 'All departments') ?>
   <?= multi_pick('branch_id', 'Company / branch', pairs("SELECT id, CONCAT(COALESCE(branch_code, code), ' — ', name) FROM branches WHERE is_active = 1 ORDER BY company_code, branch_code"), $branchIds, 'All companies') ?>
   <?= multi_pick('employee_group_id', 'Employee group', emp_group_options(), $groupIds, 'All groups') ?>
-  <label>Employee<select name="emp"><?= options(employee_options(false), $empId, 'All employees') ?></select></label>
+  <label>Employee<select name="emp"><?= options(salary_employee_options(false), $empId, 'All employees') ?></select></label>
   <label class="check" style="margin-top:18px" title="With All companies selected. A company / branch filter always prints the payslip of that branch for employees who worked in several locations."><input type="checkbox" name="split" value="1"<?= checked($split) ?>> Separate payslip per company / branch / division</label>
   <?php if (back_url()): ?><input type="hidden" name="back" value="<?= h(back_url()) ?>"><?php endif; ?>
   <button class="btn btn-primary">Apply</button>
@@ -127,6 +129,7 @@ if ($branchIds && $ids) {
     echo '<div class="callout branch-view">Showing <strong>' . h($branchName) . '</strong>. Employees who worked in several locations get the <strong>' . h($branchName)
         . '</strong> payslip, with only the pay earned there; the deductions appear on the payslip of the deduction source. Choose All to print one consolidated payslip per employee.</div>';
 }
+echo salary_hidden_note($salHidden, 'the payslips');
 ?>
 <div class="card flush">
   <div class="table-wrap table-scroll">
@@ -135,7 +138,7 @@ if ($branchIds && $ids) {
       <tbody>
       <?php foreach (rows('SELECT pi.*, e.employee_no, e.first_name, e.last_name, e.middle_name, e.suffix, ou.name AS unit FROM payroll_items pi
                            JOIN employees e ON e.id = pi.employee_id LEFT JOIN org_units ou ON ou.id = pi.org_unit_id
-                           WHERE pi.id IN (' . implode(',', array_map('intval', $ids ?: [0])) . ')' . user_scope_sql('e') . ' ORDER BY e.last_name, e.first_name') as $x):
+                           WHERE pi.id IN (' . implode(',', array_map('intval', $ids ?: [0])) . ')' . salary_scope_sql('e') . ' ORDER BY e.last_name, e.first_name') as $x):
           // one line per company / branch chosen where a multi-location employee worked (the payslip of that branch)
           $xParts = [];
           foreach ($branchIds as $bid) {

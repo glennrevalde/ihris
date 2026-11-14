@@ -107,6 +107,7 @@ your HRIS database (for example `hris_web`) in phpMyAdmin and import, in order, 
   `reopened_by`, `reopened_at`, `reopen_reason`, `reopen_log`) and the ready-made **ZKTeco attlog.xlsx** configuration.
 * `database/upgrade_to_v23_mysql55.sql` — the AMS policy *# of minutes between LOGS as INVALID* (any type of log) and flexible shift types 4-6 without required hours.
 * `database/upgrade_to_v24_mysql55.sql` — Hold / Resume of the transactions with terms (`employee_term_trans.status` *hold*, `held_at`, `held_by`, `hold_reason`) and the holiday rule of the daily-rated employees (`attendance_summaries.hol_in_basic`).
+* `database/upgrade_to_v25_mysql55.sql` — Salary restriction: the table `user_salary_exclusions` (per user, the employees whose pay the user may not see).
 
 The scripts are written for MySQL 5.5 (no `ADD COLUMN IF NOT EXISTS`; a small stored procedure
 checks `information_schema` first), are safe to run more than once and never touch existing rows
@@ -202,6 +203,17 @@ Demo data covers **August–September 2026**: August has approved cutoffs and fi
 | Duplicate logs | `# of minutes between LOGS w/ same TYPE as INVALID` again drops only a repeat of the same log type (or of two untyped punches), so a short 15-minute break is always kept. |
 | Multi-location hours listed by Co. / Branch | Payroll Batch Transaction and Attendance Batch Transaction Entry: choosing a company / branch lists its employees **and** everyone whose multi-location entry has hours there. Their row shows only the hours of that branch (*Part of a multi-location transaction*); saving it changes that location and the total becomes the sum of the locations again. All companies lists every transaction whole. |
 | Payroll Register and payslips by branch | Payroll Batch Register → Co. / Branch: the employees of the branch plus the multi-location employees who worked there, each with only the pay earned in that branch, its share of the employer contributions and the deductions when it is the deduction source (*Branch part*). The branch totals of all branches add up to the *All* register. **Branch payslip** opens the payslip on that branch's tab. Print Payslips with a company / branch prints the branch payslip of those employees; with All, one consolidated payslip each (or split). Print and CSV export follow the same filter. |
+
+### Additions in version 32: salary restriction per user (top management)
+
+Database version 25: open the site once (it upgrades by itself) or import `database/upgrade_to_v25_mysql55.sql` (MySQL 5.5; it adds the table `user_salary_exclusions`). Nothing changes for a user until the Super Admin ticks employees for that user.
+
+| Request | Where in the app |
+|---|---|
+| A user like the HR Officer, who may view Basic Salary, 201 Masterlisting, Payslips and Payroll Register, is restricted from the salary of certain employees (the top management); he / she sees every other employee | System → User Access & Permissions → choose the user → **Salary restriction** card: search by name, employee no. or position, filter by department, *Restricted only*, *Tick shown* / *Untick shown*; the counter shows how many are restricted, the user list shows *salary restricted (n)*. **Save access** stores it; **Copy access** copies it too; every change is in the audit trail (employee numbers added / removed). |
+| What the restricted user sees | The employees stay in his / her employee lists and 201 files. Basic salary, rates, grade and step show **Hidden**: 201 file, Employee Masterfile (and its CSV), 201 Masterlisting (screen, print, CSV; the totals leave them out), Masterfile Batch Edit, the rate chips of the payroll transaction screens, Payroll Inquiry, loan approvals, the audit trail. Their salary cannot be changed by that user (employee form, batch edit, CSV import, salary scaling, evaluations, salary change import). |
+| Payslips and Payroll Register | Left out of Print Payslips, the Payroll Batch Registers I and II (screen, print, CSV), the Payroll Register, the payroll run screen and the run totals, the Bank File, the Payroll Journal, the periodical / monthly / YTD / 13th month / branch cost / remittance / earnings and deductions reports, BIR 2316, Final Pay, Retro Pay and the dashboard payroll cost. A note says how many were left out and that the totals cover the employees shown; a payslip, inquiry or report opened for a restricted employee by its address is refused (403 *Salary restricted*). |
+| Not restricted | The employee linked to the user's own account (own payslips and 201 file) and the Super Admin role. Payroll computation is unchanged: a restricted Payroll Officer still processes the run but does not see those employees' pay; remittances, the bank file and the journal of such a run are produced by a user who may see every salary. |
 
 ### Additions in version 31: Hold / Resume of transactions with terms, holidays of daily-rated employees
 

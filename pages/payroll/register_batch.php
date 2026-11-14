@@ -84,6 +84,7 @@ if (get('print')) {
     if ($summary) {
         echo '<div class="doc-meta"><div><strong>Totals by:</strong> ' . h($sumText) . '</div></div>';
     }
+    echo salary_print_note((int)($data['salary_hidden'] ?? 0));   // v32
     include __DIR__ . '/_register_table.php';
     echo signatory_block();
     print_footer();
@@ -135,6 +136,7 @@ page_header($regTitle, [
   <button class="btn btn-primary">Apply</button>
 </form>
 <div class="rpt-selection-bar"><?= report_selection_html($f) ?></div>
+<?= salary_hidden_note((int)($data['salary_hidden'] ?? 0), 'this register') ?>
 
 <?php
 $partRows = count(array_filter($rows, fn($r) => !empty($r['part'])));

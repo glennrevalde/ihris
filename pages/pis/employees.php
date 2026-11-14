@@ -35,8 +35,9 @@ if (get('export')) {
     $head = ['Employee No', 'Last Name', 'First Name', 'Middle Name', 'Gender', 'Birth Date', 'Civil Status', 'Position', 'Unit', 'Branch', 'Pay Group',
         'Employment Status', 'Date Hired', 'Rate Type', 'Basic Rate', 'Grade', 'SSS', 'PhilHealth', 'Pag-IBIG', 'TIN', 'Email', 'Status'];
     $data = array_map(fn($e) => [$e['employee_no'], $e['last_name'], $e['first_name'], $e['middle_name'], $e['gender'], $e['birth_date'], $e['civil_status'],
-        $e['position'], $e['ou_name'], $e['branch_code'], $e['pg_name'], $e['employment_status'], $e['date_hired'], $e['rate_type'], $e['basic_rate'],
-        $e['grade_code'] . ($e['salary_step'] ? '-' . $e['salary_step'] : ''), $e['sss_no'], $e['philhealth_no'], $e['pagibig_no'], $e['tin'], $e['email'], $e['status']], $list);
+        $e['position'], $e['ou_name'], $e['branch_code'], $e['pg_name'], $e['employment_status'], $e['date_hired'], $e['rate_type'],
+        salary_restricted((int)$e['id']) ? 'Hidden' : $e['basic_rate'],   // v32: salary restriction
+        salary_restricted((int)$e['id']) ? 'Hidden' : $e['grade_code'] . ($e['salary_step'] ? '-' . $e['salary_step'] : ''), $e['sss_no'], $e['philhealth_no'], $e['pagibig_no'], $e['tin'], $e['email'], $e['status']], $list);
     if (!$seeSalary) {   // no Basic Salary view right: the column is left out
         unset($head[14]);
         $data = array_map(function ($r) { unset($r[14]); return array_values($r); }, $data);
@@ -83,7 +84,7 @@ page_header('Employee Masterfile', ['subtitle' => 'Digital 201 files — the sin
         <td><?= h($e['ou_name']) ?></td>
         <td><?= h($e['branch_code']) ?></td>
         <td><?= h(label($e['employment_status'])) ?><br><span class="muted small">since <?= h(fmt_date($e['date_hired'])) ?></span></td>
-        <?php if ($seeSalary): ?><td class="num"><?= money($e['basic_rate']) ?><br><span class="muted small">/<?= $e['rate_type'] === 'daily' ? 'day' : 'month' ?></span></td><?php endif; ?>
+        <?php if ($seeSalary): ?><td class="num"><?php if (salary_restricted((int)$e['id'])): ?><?= salary_show(0, '', (int)$e['id']) ?><?php else: ?><?= money($e['basic_rate']) ?><br><span class="muted small">/<?= $e['rate_type'] === 'daily' ? 'day' : 'month' ?></span><?php endif; ?></td><?php endif; ?>
         <td><?= badge($e['status']) ?></td>
         <td class="actions"><a class="btn btn-sm" href="<?= url('employee_view', ['id' => $e['id']]) ?>">View</a><?php if (can('employees.edit')): ?><a class="btn btn-sm" href="<?= url('employee_edit', ['id' => $e['id']]) ?>">Edit</a><?php endif; ?></td>
       </tr>

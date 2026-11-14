@@ -17,7 +17,7 @@ $rows = rows('SELECT e.id, e.employee_no, e.first_name, e.last_name, e.middle_na
                      COALESCE(SUM(CASE WHEN pr.run_type = "thirteenth" THEN pi.gross_pay ELSE 0 END),0) AS th_run
               FROM payroll_items pi JOIN payroll_runs pr ON pr.id = pi.run_id JOIN employees e ON e.id = pi.employee_id
               LEFT JOIN org_units ou ON ou.id = e.org_unit_id
-              WHERE ' . implode(' AND ', $where) . user_scope_sql('e') . '
+              WHERE ' . implode(' AND ', $where) . salary_scope_sql('e') . '
               GROUP BY e.id, e.employee_no, e.first_name, e.last_name, e.middle_name, e.suffix, e.date_hired, e.date_separated, e.status, ou.name
               ORDER BY ou.name, e.last_name, e.first_name', $params);
 $paid = pairs("SELECT pi.employee_id, COALESCE(SUM(l.amount),0) FROM payroll_item_lines l JOIN payroll_items pi ON pi.id = l.item_id
@@ -49,6 +49,7 @@ if (get('print')) {
     echo '<h1>13th Month Pay Report ' . h($year) . '</h1>';
     echo '<div class="doc-meta"><div>Presidential Decree 851, ' . h($covLabel) . ', deadline ' . h(fmt_date($deadline)) . '</div><div>Printed ' . h(fmt_dt(now())) . '</div></div>';
     echo report_selection_html(['org_unit_id' => $unitF ?: null], ['Year' => $year], true);
+    echo salary_restricted_note('', true);   // v32
     echo '<table class="doc-table"><thead><tr><th>Emp. no.</th><th>Employee</th><th>Department</th><th>Date hired</th><th class="num">Basic earned</th><th class="num">1/12</th><th class="num">Paid</th><th class="num">Balance</th></tr></thead><tbody>';
     foreach ($data as $r) {
         echo '<tr><td>' . h($r['employee_no']) . '</td><td>' . h(full_name($r)) . '</td><td>' . h($r['unit_name']) . '</td><td>' . h(fmt_date($r['date_hired'])) . '</td>'
@@ -66,6 +67,7 @@ page_header('13th Month Pay Report', [
         . '<a class="btn" href="' . url('rpt_13th', ['year' => $year, 'org_unit_id' => $unitF ?: null, 'csv' => 1]) . '">Export CSV</a>'
         . '<a class="btn" href="' . url('payroll_runs') . '">Create a 13th month run</a>',
 ]);
+echo salary_restricted_note('this report');   // v32
 ?>
 <form method="get" class="card filters">
   <input type="hidden" name="p" value="rpt_13th">

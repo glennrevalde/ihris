@@ -29,7 +29,7 @@ $list = rows('SELECT a.* FROM audit_log a WHERE ' . $whereSql . ' ORDER BY a.id 
 if (get('csv')) {
     audit('admin', 'audit_export', 'audit_log', null, ['from' => $f['from'], 'to' => $f['to'], 'rows' => count($list)]);
     csv_download('audit_trail_' . $f['from'] . '_' . $f['to'] . '.csv', ['Timestamp', 'User', 'Module', 'Action', 'Entity', 'Entity ID', 'Details', 'IP'],
-        array_map(fn($a) => [$a['created_at'], $a['username'], $a['module'], $a['action'], $a['entity'], $a['entity_id'], salary_mask_details($a['details']), $a['ip_address']], $list));
+        array_map(fn($a) => [$a['created_at'], $a['username'], $a['module'], $a['action'], $a['entity'], $a['entity_id'], salary_mask_details($a['details'], $a['entity'], $a['entity_id']), $a['ip_address']], $list));
 }
 $total = (int)val('SELECT COUNT(*) FROM audit_log a WHERE ' . $whereSql, $params);
 $byUser = rows('SELECT a.username, COUNT(*) AS n, MAX(a.created_at) AS last_at FROM audit_log a WHERE ' . $whereSql . ' GROUP BY a.username ORDER BY n DESC LIMIT 8', $params);
@@ -89,7 +89,7 @@ page_header('Audit Trail', [
             <td class="small"><?= h($modules[$a['module']] ?? strtoupper((string)$a['module'])) ?></td>
             <td><?= h(label($a['action'])) ?></td>
             <td class="small"><?php if ($lk): ?><a href="<?= h($lk) ?>"><?= h($a['entity']) ?> <?= h($a['entity_id']) ?></a><?php else: ?><?= h($a['entity']) ?> <?= h($a['entity_id']) ?><?php endif; ?></td>
-            <td class="small mono audit-details"><?= h(mb_strimwidth(salary_mask_details($a['details']), 0, 400, '…')) ?></td>
+            <td class="small mono audit-details"><?= h(mb_strimwidth(salary_mask_details($a['details'], $a['entity'], $a['entity_id']), 0, 400, '…')) ?></td>
             <td class="small"><?= h($a['ip_address']) ?></td>
           </tr>
         <?php endforeach; ?>

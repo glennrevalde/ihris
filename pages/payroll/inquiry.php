@@ -8,7 +8,7 @@ $year = (int)get('year', (int)date('Y'));
 if (!$empId && my_employee_id() && !can('pay_inquiry.view')) {
     $empId = (int)my_employee_id();
 }
-$emps = employee_options(false);
+$emps = salary_employee_options(false);   // v32: employees whose pay is restricted for the user are not offered
 if (!$empId) {
     $empId = (int)(array_key_first($emps) ?: 0);
 }
@@ -55,9 +55,11 @@ page_header('Payroll Inquiry', [
         <div class="person-meta"><?= h($emp['employee_no']) ?>, <?= h($emp['position'] ?: '—') ?>, <?= h($emp['unit_name'] ?: '—') ?>, <?= h($emp['pay_group_name'] ?: '—') ?>, <?= h($emp['branch_name'] ?: '—') ?></div></div>
     </div>
     <div class="chips">
+      <?php if (salary_can('view', (int)$emp['id']) || (int)$emp['id'] === my_employee_id()): ?>
       <span class="chip">Monthly ₱<?= h(number_format($rates['monthly'], 2)) ?></span>
       <span class="chip">Daily ₱<?= h(number_format($rates['daily'], 2)) ?></span>
       <span class="chip">Hourly ₱<?= h(number_format($rates['hourly'], 2)) ?></span>
+      <?php else: ?><span class="chip salary-hidden">Rates hidden</span><?php endif; ?>
       <span class="chip">TIN <?= h($emp['tin'] ?: '—') ?></span>
     </div>
   </div>

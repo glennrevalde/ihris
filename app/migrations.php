@@ -15,7 +15,7 @@
  */
 require_once __DIR__ . '/engine/paytrans.php';
 
-const DB_VERSION = 24;
+const DB_VERSION = 25;
 
 function db_version(): int
 {
@@ -1336,10 +1336,29 @@ function migration_v24(): array
     ], 'settings' => [], 'seeds' => [], 'data' => []];
 }
 
+/**
+ * Version 25 (v32): Salary restriction. Per user, the employees whose pay the user may not see
+ * (System > User Access & Permissions). See app/engine/scope.php.
+ */
+function migration_v25(): array
+{
+    $E = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4';
+    return ['tables' => [
+        'user_salary_exclusions' => "CREATE TABLE IF NOT EXISTS user_salary_exclusions (
+  user_id INT NOT NULL,
+  employee_id INT NOT NULL,
+  created_by INT NULL,
+  created_at DATETIME NULL,
+  PRIMARY KEY (user_id, employee_id),
+  KEY idx_use_emp (employee_id)
+) $E COMMENT='v32: employees whose pay the user may not see'",
+    ], 'columns' => [], 'modify' => [], 'settings' => [], 'seeds' => [], 'data' => []];
+}
+
 /** Every upgrade step in order: version => definitions. */
 function migrations_all(): array
 {
-    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21', 22 => 'migration_v22', 23 => 'migration_v23', 24 => 'migration_v24'];
+    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21', 22 => 'migration_v22', 23 => 'migration_v23', 24 => 'migration_v24', 25 => 'migration_v25'];
 }
 
 function mig_table_exists(string $t): bool
@@ -1513,7 +1532,8 @@ function db_upgrade_sql(int $version = DB_VERSION): string
         '21' => 'flexible shifts: 4 logs, 2 logs with break minutes, 2 logs without a break',
         '22' => 'Super Admin re-opening of closed periods, ZKTeco attlog.xlsx import configuration',
         '23' => 'invalid-log window for every type of log, flexible shift types 4-6 without required hours',
-        '24' => 'Hold / Resume of transactions with terms, holidays of daily-rated employees in the basic pay'][(string)$version] ?? '';
+        '24' => 'Hold / Resume of transactions with terms, holidays of daily-rated employees in the basic pay',
+        '25' => 'Salary restriction: employees whose pay a user may not see'][(string)$version] ?? '';
     $q = fn($v) => $v === null ? 'NULL' : "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], (string)$v) . "'";
     $out = [];
     $out[] = "-- =====================================================================";

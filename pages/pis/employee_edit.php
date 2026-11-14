@@ -11,8 +11,10 @@ if ($id && !$emp) {
 }
 $isNew = !$emp;
 // Basic Salary rights (app/engine/scope.php): without View the rate is hidden, without Edit it is not changed
-$seeSalary = salary_can('view');
-$editSalary = salary_can('edit');
+// v32: also hidden and kept for an employee on the user's salary restriction list
+$seeSalary = salary_can('view', $id ?: null);
+$editSalary = salary_can('edit', $id ?: null);
+$salRestricted = $id && salary_restricted($id);
 
 $text = EMPLOYEE_TEXT_FIELDS;
 $bools = EMPLOYEE_BOOL_FIELDS;
@@ -267,7 +269,7 @@ page_header($isNew ? 'New Employee' : 'Edit Employee — ' . full_name($emp, fal
     <?php elseif ($seeSalary): ?>
       <?= $F('basic_rate', ['label' => 'Basic rate (₱ per month / day)', 'type' => 'money', 'readonly' => true, 'help' => 'Read only: you have no Basic Salary edit right.']) ?>
     <?php else: ?>
-      <div class="field"><label>Basic rate (₱ per month / day)</label><div class="input-static muted">Hidden</div><small class="help">You have no Basic Salary view right. <?= $isNew ? 'The rate is set by a user with the Basic Salary edit right.' : 'The rate on file is kept when you save.' ?></small></div>
+      <div class="field"><label>Basic rate (₱ per month / day)</label><div class="input-static muted">Hidden</div><small class="help"><?= $salRestricted ? 'The salary of this employee is restricted for your account.' : 'You have no Basic Salary view right.' ?> <?= $isNew ? 'The rate is set by a user with the Basic Salary edit right.' : 'The rate on file is kept when you save.' ?></small></div>
     <?php endif; ?>
     <?= $F('employee_type_id', ['label' => 'Employee type', 'type' => 'select', 'options' => pairs("SELECT id, CONCAT(code, ' — ', name, ' (factor ', ROUND(conversion_factor, 2), ')') FROM emp_types WHERE is_active = 1 ORDER BY code"), 'help' => 'Conversion factor: daily rate = monthly rate ÷ factor.']) ?>
     <?= $F('days_per_year', ['label' => 'Days-per-year factor', 'type' => 'number', 'help' => 'Used only when no employee type is set (261, 313 or 365).']) ?>

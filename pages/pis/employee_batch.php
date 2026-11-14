@@ -135,8 +135,8 @@ if (is_post()) {
             if (!isset($cols[$k]) || !is_scalar($v)) {
                 continue;
             }
-            if (in_array($k, EMP_BATCH_SALARY, true) && !$canSalary) {
-                continue;
+            if (in_array($k, EMP_BATCH_SALARY, true) && (!$canSalary || salary_restricted($eid))) {
+                continue;   // v32: not for an employee on the user's salary restriction list
             }
             $v = trim((string)$v);
             if ($k === 'day_off') {
@@ -296,7 +296,11 @@ page_header('Masterfile Batch Edit', [
                 [$lbl, $type, $opts, $w] = $cols[$k];
                 $name = 'e[' . (int)$e['id'] . '][' . $k . ']';
                 $val = (string)($e[$k] ?? '');
+                $salHidden = in_array($k, EMP_BATCH_SALARY, true) && salary_restricted((int)$e['id']);   // v32: salary restriction
                 $ro = !$canEdit || (in_array($k, EMP_BATCH_SALARY, true) && !$canSalary);
+                if ($salHidden) { ?>
+              <td><span class="input-static muted salary-hidden eb-cell <?= h($w) ?>" title="Hidden: salary restricted for your account">Hidden</span></td>
+                <?php continue; }
                 if ($type === 'yesno') {
                     $val = $val === '1' ? '1' : '0';
                 }

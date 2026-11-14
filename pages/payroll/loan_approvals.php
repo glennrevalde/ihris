@@ -122,7 +122,7 @@ $keep = array_filter(['status' => $statusF !== 'submitted' ? $statusF : null, 'q
           </dl></section>
         <section><h3>Ability to pay</h3>
           <dl class="lr-dl">
-            <dt>Last net pay</dt><dd><?= $lastPay ? money($lastPay['net_pay']) . ' <span class="muted small">(period to ' . h(fmt_date($lastPay['period_end'])) . ')</span>' : '<span class="muted">No payroll yet</span>' ?></dd>
+            <dt>Last net pay</dt><dd><?= salary_restricted((int)$cur['employee_id']) ? salary_show(0, '', (int)$cur['employee_id']) : ($lastPay ? money($lastPay['net_pay']) . ' <span class="muted small">(period to ' . h(fmt_date($lastPay['period_end'])) . ')</span>' : '<span class="muted">No payroll yet</span>') ?></dd>
             <dt>Active deductions with terms</dt><dd><?= $active ? count($active) . ', ' . money(array_sum(array_map(fn($t) => (float)$t['per_pay_principal'] + (float)$t['per_pay_interest'], $active))) . ' a payday, balance ' . money(array_sum(array_column($active, 'balance'))) : 'None' ?></dd>
           </dl>
           <?php if ($active): ?><ul class="lr-mini"><?php foreach (array_slice($active, 0, 5) as $t): ?><li><?= h($t['type_name'] ?: 'Deduction') ?>: <?= money((float)$t['per_pay_principal'] + (float)$t['per_pay_interest']) ?> a payday, balance <?= money($t['balance']) ?></li><?php endforeach; ?></ul><?php endif; ?>

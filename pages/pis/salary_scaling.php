@@ -31,6 +31,7 @@ if ($in['scope_ou'] !== '') {
 }
 $emps = rows('SELECT e.*, sg.code AS grade_code, sg.minimum AS gmin, sg.maximum AS gmax, sg.id AS gid FROM employees e LEFT JOIN salary_grades sg ON sg.id = e.salary_grade_id
               WHERE ' . implode(' AND ', $where) . user_scope_sql('e') . ' ORDER BY e.last_name', $params);
+$emps = salary_filter_rows($emps, 'id', $salHidden);   // v32: employees on the user's salary restriction list are left out
 $grades = rows('SELECT * FROM salary_grades ORDER BY sort_order');
 
 $simulated = get('run') || is_post();
@@ -125,6 +126,7 @@ if (is_post() && post('_action') === 'commit') {
 }
 
 page_header('Salary Scaling Simulator', ['subtitle' => 'Model the financial impact of an increase, a wage order or a grade restructuring before committing.', 'back' => url('salary_grades')]);
+echo salary_hidden_note($salHidden, 'the simulator');
 ?>
 <form class="card" method="get">
   <input type="hidden" name="p" value="salary_scaling"><input type="hidden" name="run" value="1">

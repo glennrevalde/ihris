@@ -7,7 +7,7 @@ $month = get('month', date('Y-m', strtotime('first day of last month')));
 [$y, $m] = array_map('intval', explode('-', $month));
 $rows = rows("SELECT pi.org_unit_id, pi.employee_id, pi.gross_pay, pi.net_pay, pi.basic_pay, pi.ot_pay, pi.sss_er + pi.sss_ec + pi.phic_er + pi.hdmf_er AS er, pi.withholding_tax, pi.total_deductions
               FROM payroll_items pi JOIN payroll_runs r ON r.id = pi.run_id JOIN employees e ON e.id = pi.employee_id
-              WHERE r.status = 'finalized' AND YEAR(r.period_end) = ? AND MONTH(r.period_end) = ?" . user_scope_sql('e'), [$y, $m]);
+              WHERE r.status = 'finalized' AND YEAR(r.period_end) = ? AND MONTH(r.period_end) = ?" . salary_scope_sql('e'), [$y, $m]);
 $all = org_units_all();
 // roll each item up to its department-level unit (Department type) or keep the unit itself
 $dept = [];
@@ -48,6 +48,7 @@ if (get('csv')) {
 }
 page_header('Monthly Payroll Summary', ['subtitle' => 'Finalized payroll runs whose period ends in the selected month.',
     'actions' => '<a class="btn" href="' . url('rpt_monthly', ['month' => $month, 'csv' => 1]) . '">Export CSV</a> <button type="button" class="btn" data-print>Print</button> <button type="button" class="btn" data-save-pdf data-pdf-root=".content" data-pdf-size="landscape">Save as PDF</button> <a class="btn" href="' . url('budgets', ['year' => $y]) . '">Budgets</a>']);
+echo salary_restricted_note('this summary');   // v32
 ?>
 <form class="card filters" method="get"><input type="hidden" name="p" value="rpt_monthly"><label>Month<input type="month" name="month" value="<?= h($month) ?>" data-autosubmit></label></form>
 <div class="stats">

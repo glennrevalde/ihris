@@ -301,7 +301,7 @@ foreach ($fields as $k => $d) {
 </div>
 
 <div class="card flush">
-  <div class="card-head pad"><div><h2>Employee 201 File Masterlisting</h2><div class="sub"><?= h(implode(', ', $filterText)) ?>, <?= count($rows) ?> employee(s)</div></div>
+  <div class="card-head pad"><div><h2>Employee 201 File Masterlisting</h2><div class="sub"><?= h(implode(', ', $filterText)) ?>, <?= count($rows) ?> employee(s)<?php $salxN = count(array_filter($rows, fn($r) => !empty($r['__salx']))); if ($salxN && array_intersect($cols, ML_SALARY_FIELDS)): ?>, pay columns hidden for <?= $salxN ?> (salary restriction of your account)<?php endif; ?></div></div>
     <input type="search" class="table-search" data-target="mlTable" placeholder="Find in the list"></div>
   <?= $table(false) ?>
 </div>
