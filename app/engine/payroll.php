@@ -784,17 +784,33 @@ function payroll_build_item(array $run, array $pg, array $emp, array &$ctx): ?ar
                     $earn('VLCONV', 'Vacation leave conversion (de minimis)', $nt, 'nontax', $srcBranch, null, null, null, 'others');
                     $earn('VLCONV_X', 'Vacation leave conversion — excess over de minimis', $Tv('vl_conversion') - $nt, 'other', $srcBranch, null, null, null, 'others');
                 }
-                $mc = (float)($T['meal_comp'] ?? 0);
+                // v34: a count paid by a "Per Count" benefit (Benefits Table) is paid there (section 2); the rates of
+                // the Payroll Parameters apply only to a count no Per Count benefit is set for
+                $perCountBen = payroll_count_benefit_fields();
+                $mc = in_array('meal_comp', $perCountBen, true) ? 0.0 : (float)($T['meal_comp'] ?? 0);
                 if ($mc > 0 && setting_num('meal_comp_rate', 0) > 0) {
                     $earn('MEAL', sprintf('Meal compensation — %s × %s', $hrsTxt($mc), number_format(setting_num('meal_comp_rate', 0), 2)), $mc * setting_num('meal_comp_rate', 0), 'taxable', $srcBranch, $mc, null, null, 'others');
                 }
-                $mco = (float)($T['meal_comp_ot'] ?? 0);
+                $mco = in_array('meal_comp_ot', $perCountBen, true) ? 0.0 : (float)($T['meal_comp_ot'] ?? 0);
                 if ($mco > 0 && setting_num('meal_comp_ot_rate', 0) > 0) {
                     $earn('MEAL_OT', sprintf('Meal compensation OT — %s × %s (de minimis)', $hrsTxt($mco), number_format(setting_num('meal_comp_ot_rate', 0), 2)), $mco * setting_num('meal_comp_ot_rate', 0), 'nontax', $srcBranch, $mco, null, null, 'others');
                 }
                 $tk = (int)($T['tickets'] ?? 0);
-                if ($tk > 0 && setting_num('ticket_rate', 0) > 0) {
-                    $pendingDed[] = ['code' => 'TICKETS', 'desc' => sprintf('Tickets — %d × %s', $tk, number_format(setting_num('ticket_rate', 0), 2)), 'amount' => $tk * setting_num('ticket_rate', 0), 'ref_type' => null, 'ref_id' => null, 'reg' => 'others', 'qty' => $tk, 'consent' => true];
+                // v34: Penalty Tickets x the amount of the "Per Count" deduction code (Employee Transactions Table Setup);
+                // the amount of the employee's own deduction of that code, when there is one, replaces the default
+                $pcDed = $tk > 0 ? payroll_count_deduction() : null;
+                if ($tk > 0 && $pcDed) {
+                    $own = (float)val("SELECT amount FROM employee_deductions WHERE employee_id = ? AND deduction_type_id = ? AND status = 'active' AND amount > 0
+                                       AND start_date <= ? AND (end_date IS NULL OR end_date >= ?) ORDER BY id DESC LIMIT 1", [$empId, (int)$pcDed['id'], $run['period_end'], $run['period_start']]);
+                    $rate = $own > 0 ? $own : (float)$pcDed['default_amount'];
+                    if ($rate > 0 && !empty($pcDed['ref_ext'])) {
+                        $info('TICKETS', sprintf('%s — %d × %s — reference only', $pcDed['name'], $tk, number_format($rate, 2)), round($tk * $rate, 2), 'info', $tk);
+                    } elseif ($rate > 0) {
+                        $pendingDed[] = ['code' => 'TICKETS', 'desc' => sprintf('%s — %d × %s', $pcDed['name'], $tk, number_format($rate, 2)), 'amount' => round($tk * $rate, 2),
+                            'ref_type' => 'deduction_type', 'ref_id' => (int)$pcDed['id'], 'reg' => ($pcDed['register_group'] ?: 'other') === 'other' ? 'others' : $pcDed['register_group'], 'qty' => $tk, 'consent' => true];
+                    }
+                } elseif ($tk > 0 && setting_num('ticket_rate', 0) > 0) {
+                    $pendingDed[] = ['code' => 'TICKETS', 'desc' => sprintf('Penalty Tickets — %d × %s', $tk, number_format(setting_num('ticket_rate', 0), 2)), 'amount' => $tk * setting_num('ticket_rate', 0), 'ref_type' => null, 'ref_id' => null, 'reg' => 'others', 'qty' => $tk, 'consent' => true];
                 }
                 if ($Tv('other_ded') > 0) {
                     $pendingDed[] = ['code' => 'OTHER_DED', 'desc' => 'Other deduction' . (!empty($T['remarks']) ? ' — ' . mb_strimwidth($T['remarks'], 0, 60, '…') : ''), 'amount' => $Tv('other_ded'), 'ref_type' => null, 'ref_id' => null, 'reg' => 'others', 'qty' => null, 'consent' => true];
@@ -816,13 +832,28 @@ function payroll_build_item(array $run, array $pg, array $emp, array &$ctx): ?ar
         $daysPerWeek = max(1, $rates['factor'] * 12 / 52);
         $absRatio = $Tv0('hours_work') > 0 ? min(1, $Tv0('absent_hrs') / $Tv0('hours_work')) : 0;
         $bens = rows("SELECT eb.*, bt.code, bt.name, bt.tax_treatment, bt.ceiling_amount, bt.ceiling_period, bt.frequency, bt.eligibility_regular_only, bt.eligibility_min_months,
-                             bt.given_at, bt.no_deduction, bt.ref_ext
+                             bt.given_at, bt.no_deduction, bt.ref_ext" . (mig_column_exists('benefit_types', 'count_field') ? ', bt.count_field' : '') . "
                       FROM employee_benefits eb JOIN benefit_types bt ON bt.id = eb.benefit_type_id
                       WHERE eb.employee_id = ? AND eb.status = 'active' AND bt.is_active = 1 AND eb.start_date <= ? AND (eb.end_date IS NULL OR eb.end_date >= ?)",
             [$empId, $run['period_end'], $run['period_start']]);
         $benPeriodNo = (int)pt_period_meta($run['period_start'], $run['period_end'], $freq)['period_no'];
+        // v34: a "Per Count" benefit is paid to every employee with that count in the Payroll Transaction, enrolled
+        // or not (an enrollment only gives its own amount per count); never on a final pay without a transaction
+        if (mig_column_exists('benefit_types', 'count_field')) {
+            $enrolled = array_map(fn($b) => (int)$b['benefit_type_id'], $bens);
+            foreach (rows("SELECT bt.*, bt.id AS benefit_type_id, bt.default_amount AS amount, '' AS post_term FROM benefit_types bt
+                           WHERE bt.is_active = 1 AND bt.given_at = 'count' AND bt.count_field IS NOT NULL") as $cb) {
+                if (!in_array((int)$cb['id'], $enrolled, true) && $type === 'regular' && (float)($T[$cb['count_field']] ?? 0) > 0) {
+                    $bens[] = $cb;
+                }
+            }
+        }
         foreach ($bens as $bn) {
-            if ($type === 'regular') {
+            $perCount = ($bn['given_at'] ?? '') === 'count';
+            if ($perCount && ($type !== 'regular' || (float)($T[$bn['count_field'] ?? ''] ?? 0) <= 0)) {
+                continue;   // v34: nothing to pay without a count
+            }
+            if ($type === 'regular' && !$perCount) {   // v34: a Per Count benefit is paid on the pay that carries the count
                 // manner of posting set on the enrollment (1st / 2nd / 3rd / 4th pay of the month, or every pay);
                 // left blank, the benefit type's own frequency applies
                 $postTerm = (string)($bn['post_term'] ?? '');
@@ -847,6 +878,10 @@ function payroll_build_item(array $run, array $pg, array $emp, array &$ctx): ?ar
             $dh = $dutyHours + ($withHol ? $holHours : 0);
             $qty = null;
             switch (str_replace('_hol', '', $givenAt)) {
+                case 'count':   // v34: amount x the count of the Payroll Transaction (100 x 11 = 1,100)
+                    $qty = round((float)($T[$bn['count_field']] ?? 0), 2);
+                    $amt = $rate * $qty;
+                    break;
                 case 'duty_day':
                     $qty = round($dh / $hpd, 2);
                     $amt = $rate * $qty;
@@ -1295,6 +1330,8 @@ function payroll_build_item(array $run, array $pg, array $emp, array &$ctx): ?ar
                     continue;
                 }
                 $amt = $isFinal ? (float)$d['ledger_balance'] : min((float)($d['amount'] > 0 ? $d['amount'] : $d['ledger_amort']), (float)$d['ledger_balance']);
+            } elseif ($d['computation'] === 'per_count') {
+                continue;   // v34: taken with the Penalty Tickets of the Payroll Transaction (section 1), its amount is the rate
             } elseif ($d['computation'] === 'percent_basic') {
                 $amt = $item['basic_pay'] * (float)$d['amount'] / 100;
             } else {
@@ -1547,4 +1584,32 @@ function payroll_delete_run(int $runId): string
     });
     audit('payroll', 'run_delete', 'payroll_runs', $runId, ['run_no' => $run['run_no'], 'period' => $run['period_start'] . ' - ' . $run['period_end']]);
     return (string)$run['run_no'];
+}
+
+/** v34: the counts of the Payroll Transaction paid by an active "Per Count" benefit (meal_comp, meal_comp_ot). */
+function payroll_count_benefit_fields(): array
+{
+    static $memo = [];
+    $db = function_exists('active_db_name') ? active_db_name() : '';
+    if (!isset($memo[$db])) {
+        $memo[$db] = mig_column_exists('benefit_types', 'count_field')
+            ? array_values(array_filter(q("SELECT DISTINCT count_field FROM benefit_types WHERE is_active = 1 AND given_at = 'count' AND count_field IS NOT NULL")->fetchAll(PDO::FETCH_COLUMN)))
+            : [];
+    }
+    return $memo[$db];
+}
+
+/** v34: the active deduction code computed "Per Count" (x Penalty Tickets), or null. */
+function payroll_count_deduction(): ?array
+{
+    static $memo = [];
+    $db = function_exists('active_db_name') ? active_db_name() : '';
+    if (!array_key_exists($db, $memo)) {
+        try {
+            $memo[$db] = row("SELECT * FROM deduction_types WHERE computation = 'per_count' AND is_active = 1 ORDER BY priority, id LIMIT 1") ?: null;
+        } catch (Throwable $e) {
+            $memo[$db] = null;
+        }
+    }
+    return $memo[$db];
 }

@@ -2547,7 +2547,7 @@ return [
     ['Duty hours', 'Hours work, absent, lates, undertime, the five leave categories and the total unworked paid holiday hours.'],
     ['Overtime and premium hours', 'A matrix of regular day, day off, legal holiday and special holiday against duty, overtime, on day-off and day-off overtime.'],
     ['Night premium hours', 'The same matrix, for hours inside the night window.'],
-    ['Others', 'Amounts and counts rather than hours: 13th month, service charge, leave conversions, meal compensation, meal tickets and other deduction.'],
+    ['Others', 'Amounts and counts rather than hours: 13th month, service charge, leave conversions, meal compensation (count), meal compensation OT (count), Penalty Tickets (count) and other deduction. Under each count the screen shows what it is paid or deducted with: the Per Count benefit of the Benefits Table, the Per Count deduction code, or the rate of the Payroll Parameters.'],
     ['Remarks', 'Why the figures were typed, and the reference of the approval.'],
     ['Co. / Branch, Department, Employee group', 'Co. / Branch, Department and Employee group take one, two or more values: open the list, tick the companies / branches (departments, groups) wanted, use Find, All or Clear, and close it with Done (or a click outside). Nothing ticked = all. A department includes the units under it.'],
 ],
@@ -2560,6 +2560,7 @@ return [
     'Attendance Summary Entry, Entry II, Batch Transaction Entry, Attendance Transaction Closing, Attendance Entry, Auto-Generate, Leave and Shift entry and the attendance CSV import list only the periods whose payroll is not yet closed. Paid periods stay readable from the Payroll Transaction screens and Periods & Cutoffs.',
     'Daily-rated employees (version 31): the Hours work includes the hours worked on regular and special holidays (paid 100 per cent in the basic pay), and the legal and special holiday columns are paid for the premium only (special 30 per cent, regular 100 per cent), as for the monthly-rated. A note above the form says so; a transaction made before version 31 says that it keeps the former rule (holiday hours outside the Hours work, paid in full) until the attendance is processed again. Type and import the Hours work of a daily-rated employee with the holiday hours included.',
     'Monthly-salaried employees: the perfect-attendance hours of the period (every scheduled working day times the shift hours) are shown above the form. Every leave hour typed in VL, SL, EL, OL or PM is deducted from Hours work automatically, on screen as you type and again on save, so a monthly employee is never paid the leave twice.',
+    'Others, counts (v34): Meal compensation (count) and Meal compensation OT (count) are paid by the Per Count benefits of the Benefits Table, Penalty Tickets (count) (formerly Meal tickets availed) is deducted by the Per Count deduction code of the Employee Transactions Table Setup; the line under each field says which code and amount apply.',
 ],
 'tips' => [
     'Saving here flips a transaction that came from attendance to manual, which protects it from the next Process attendance. Only ReCalc from DTR overrides that.',
@@ -3394,7 +3395,7 @@ return [
 'purpose' => 'The document the employee receives. It lists the earnings, the deductions, the year-to-date figures and the net pay, with the outstanding loan balances when that option is on.',
 'fields' => [
     ['Earnings', 'Basic, absences, lates, undertime, overtime and every premium category, night premium, holiday pay, 13th month and the leave categories. Hours are shown beside the amounts when that option is on.'],
-    ['Deductions', 'SSS, SSS Loan, SSS Calamity Loan, Pag-IBIG and its loan, PhilHealth, tax, each loan, advance and AR on its own row, meal tickets and any other deduction.'],
+    ['Deductions', 'SSS, SSS Loan, SSS Calamity Loan, Pag-IBIG and its loan, PhilHealth, tax, each loan, advance and AR on its own row, Penalty Tickets and any other deduction.'],
     ['Loans, advances and AR', 'Not lumped as Advances: every deduction of the register column Adv./AR/Sal Loans (Payroll register column of the Employee Transactions Table) has its own row with its name, for example CA Cash Advance 1,287.50 and Salary Loan 1,295.00, so the employee sees what each amount is for. Two schedules of the same item add up on its row. When the payslip has none, the row Advances .00 keeps its place.'],
     ['SSS Calamity Loan', 'Shown on its own row, never inside SSS Loan: a deduction whose code is SSS-CL (TTD_SSS-CL for a transaction with terms), whose description names the SSS calamity loan, or that comes from an SSS calamity loan ledger.'],
     ['YTD information', 'Earnings, taxable income and tax for the year so far, this payslip, and the two added together.'],
@@ -4259,6 +4260,9 @@ return [
     'The Import from CSV panel on this screen loads benefit types in bulk; rows are matched on the code. See Import from CSV on the forms.',
     'The GL account list has New and Edit buttons: New opens a small form to add an account to the Payroll Code Table, Edit corrects the account selected. The record is saved at once and the list is refreshed with the account selected, without leaving the form (Create / Edit permission of the Payroll Code Table).',
 ],
+'rules' => [
+    'Given at Per Count (v34): the Amount is paid per count of the Payroll Transaction chosen in Count from: Meal compensation (count) or Meal compensation OT (count). Amount 100 and a count of 11 = 1,100. It is paid to every employee with that count in the period, enrolled or not; an Employee Benefits enrollment of the benefit gives its own amount per count. One active benefit per count. Tax treatment, de minimis ceiling and Ref Ext apply as for the other benefits. When no Per Count benefit is set for a count, the rate of the Payroll Parameters is used, as before.',
+],
 'related' => ['emp_benefits', 'payroll_params', 'payslip', 'form-csv-import'],
 ],
 
@@ -4310,6 +4314,7 @@ return [
 'rules' => [
     'A ledger computation is the only way to attach a loan amortization.',
     'System deduction types cannot be deleted.',
+    'Computation Per Count (v34): the Default amount is deducted per Penalty Ticket encoded in the Payroll Transaction (Others, Penalty Tickets (count)): 50 x 11 tickets = 550, shown in the Penalty Tickets line of the payslip and the register column chosen. It is taken from every employee with tickets; an Employee Term Loan/Payables deduction of the code gives its own amount per ticket. One active Per Count code. Without one, the ticket amount of the Payroll Parameters is used, as before.',
 ],
 'tips' => [
     'The Import from CSV panel on this screen loads deduction codes in bulk; rows are matched on the code. See Import from CSV on the forms.',

@@ -1128,6 +1128,23 @@
   });
 })();
 
+/* v34: Benefits Table: "Count from" is asked only for Given at Per Count */
+(function () {
+  'use strict';
+  var sel = document.querySelector('select[data-count-toggle]');
+  var cnt = document.querySelector('select[data-count-field]');
+  if (!sel || !cnt) return;
+  var box = cnt.closest('.field');
+  function run() {
+    var on = sel.value === 'count';
+    if (box) box.hidden = !on;
+    cnt.required = on;
+    if (!on) cnt.value = '';
+  }
+  sel.addEventListener('change', run);
+  run();
+})();
+
 /* v32: salary restriction picker (User Access & Permissions) */
 (function () {
   'use strict';

@@ -53,7 +53,7 @@ const PT_FIELDS = [
     'sl_conversion' => ['SL conversion (amount)', 'SL Conv.', 'others'],
     'vl_conversion' => ['VL conversion (amount)', 'VL Conv.', 'others'],
     'other_ded'     => ['Other deduction (amount)', 'Other Ded.', 'others'],
-    'tickets'       => ['Meal tickets availed (count)', 'Tickets', 'others'],
+    'tickets'       => ['Penalty Tickets (count)', 'Penalty Tickets', 'others'],   // v34: was Meal tickets availed
     'meal_comp'     => ['Meal compensation (count)', 'Meal Comp', 'others'],
     'meal_comp_ot'  => ['Meal compensation OT (count)', 'Meal Comp OT', 'others'],
 ];
@@ -149,6 +149,13 @@ const BENEFIT_GIVEN_AT = [
     'duty_day'      => 'Duty(Day)',
     'duty_hour'     => 'Duty(Hour)',
     'duty_week'     => 'Duty(Week)',
+    'count'         => 'Per Count',   // v34: amount x a count of the Payroll Transaction
+];
+
+/** v34: the counts of the Payroll Transaction a "Per Count" benefit can be paid on. */
+const BENEFIT_COUNT_FIELDS = [
+    'meal_comp'    => 'Meal compensation (count)',
+    'meal_comp_ot' => 'Meal compensation OT (count)',
 ];
 
 /* ======================================================================= periods */

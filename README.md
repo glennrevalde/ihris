@@ -108,6 +108,7 @@ your HRIS database (for example `hris_web`) in phpMyAdmin and import, in order, 
 * `database/upgrade_to_v23_mysql55.sql` — the AMS policy *# of minutes between LOGS as INVALID* (any type of log) and flexible shift types 4-6 without required hours.
 * `database/upgrade_to_v24_mysql55.sql` — Hold / Resume of the transactions with terms (`employee_term_trans.status` *hold*, `held_at`, `held_by`, `hold_reason`) and the holiday rule of the daily-rated employees (`attendance_summaries.hol_in_basic`).
 * `database/upgrade_to_v25_mysql55.sql` — Salary restriction: the table `user_salary_exclusions` (per user, the employees whose pay the user may not see).
+* `database/upgrade_to_v27_mysql55.sql` — Per Count benefits (`benefit_types.given_at` *count*, `count_field`) and the Per Count deduction computation (`deduction_types.computation` *per_count*).
 * `database/upgrade_to_v26_mysql55.sql` — longer company / branch codes (`branches.code` 40, `company_code`, `branch_code`, `init_code` 20; `log_staging.co_code`, `branch_code` 20).
 
 The scripts are written for MySQL 5.5 (no `ADD COLUMN IF NOT EXISTS`; a small stored procedure
@@ -204,6 +205,17 @@ Demo data covers **August–September 2026**: August has approved cutoffs and fi
 | Duplicate logs | `# of minutes between LOGS w/ same TYPE as INVALID` again drops only a repeat of the same log type (or of two untyped punches), so a short 15-minute break is always kept. |
 | Multi-location hours listed by Co. / Branch | Payroll Batch Transaction and Attendance Batch Transaction Entry: choosing a company / branch lists its employees **and** everyone whose multi-location entry has hours there. Their row shows only the hours of that branch (*Part of a multi-location transaction*); saving it changes that location and the total becomes the sum of the locations again. All companies lists every transaction whole. |
 | Payroll Register and payslips by branch | Payroll Batch Register → Co. / Branch: the employees of the branch plus the multi-location employees who worked there, each with only the pay earned in that branch, its share of the employer contributions and the deductions when it is the deduction source (*Branch part*). The branch totals of all branches add up to the *All* register. **Branch payslip** opens the payslip on that branch's tab. Print Payslips with a company / branch prints the branch payslip of those employees; with All, one consolidated payslip each (or split). Print and CSV export follow the same filter. |
+
+### Additions in version 34: Per Count benefits and the Penalty Tickets deduction
+
+Database version 27: open the site once (it upgrades by itself) or import `database/upgrade_to_v27_mysql55.sql` (MySQL 5.5, safe to run more than once; it adds *Per Count* to `benefit_types.given_at` and `deduction_types.computation`, and `benefit_types.count_field`). The stylesheet loads as `app.css?v=39`, the script as `app.js?v=36`.
+
+| Request | Where in the app |
+|---|---|
+| Connect Meal Comp of the Payroll Transaction to the Benefits Table: "Per Count" in Given at; 100 in the Benefits Table x 11 in the Payroll Transaction = 1,100; same for Meal Compensation OT (count) | Company Parameters Setup → Benefits Table → Given at **Per Count**, then **Count from (Payroll Transaction)**: *Meal compensation (count)* or *Meal compensation OT (count)* (shown only for Per Count; one active benefit per count). The payroll pays Amount x count as a benefit line ("Meal Compensation (11 × 100.00)" = 1,100) with the benefit's tax treatment / de minimis ceiling, to every employee with the count in the period; an Employee Benefits enrollment of the benefit gives its own amount per count. Its own column in Register II, its line on the payslip. |
+| Rename the tickets to "Penalty Tickets", a deduction connected to the Employee Transaction Table | Payroll Transaction Setup / II / Batch Transaction, CSV import, payslip: *Meal tickets availed (count)* is now **Penalty Tickets (count)** (column *Penalty Tickets*; the CSV key stays `tickets`). |
+| A computation "Per Count" in the Employee Transaction Table: 50 x 11 tickets = 550, a deduction | Employee Transactions Table Setup → Deductions → Computation **Per Count (x Penalty Tickets)** (one active code). The payroll deducts Default amount x Penalty Tickets ("Penalty Tickets — 11 × 50.00" = 550) in the register column of the code and the Penalty Tickets line of the payslip; an Employee Term Loan/Payables deduction of the code gives its own amount per ticket and is not deducted a second time. |
+| Connectivity shown on the entry screens | Under each count of the Others the Payroll Transaction screens show what applies: "Paid: x 100.00 (MEALCOMP, Meal Compensation)", "Deducted: x 50.00 (TICKETS, Penalty Tickets)", or the Payroll Parameters rate when no Per Count code is set (those rates keep working as before, their labels say so). |
 
 ### Fix after version 33: "Data too long for column 'code'" when importing the Company Table
 

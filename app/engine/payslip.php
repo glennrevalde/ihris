@@ -304,7 +304,7 @@ function payslip_html(array $it, array $o = []): string
         <?php foreach ($b['ded'] as $d): ?>
           <div class="ps-line"><span class="l"><b><?= h(mb_strimwidth($d['label'], 0, 34, '…')) ?></b></span><span class="a"><?= ps_amt((float)$d['amount']) ?></span></div>
         <?php endforeach; ?>
-        <div class="ps-line"><span class="l"><b>Tickets</b></span><span class="a"><?= ps_amt($b['tickets']) ?></span></div>
+        <div class="ps-line"><span class="l"><b>Penalty Tickets</b></span><span class="a"><?= ps_amt($b['tickets']) ?></span></div>
         <div class="ps-fill"></div>
         <?php foreach ($b['ded_lines'] as $d): ?>
           <div class="ps-line"><span class="l"><?= h(mb_strimwidth($d['label'], 0, 34, '…')) ?></span><span class="a"><?= ps_amt((float)$d['amount']) ?></span></div>
@@ -476,7 +476,7 @@ function payslip_pdf_block(SimplePDF $pdf, array $it, float $top, ?int $branchId
             $pdf->text($c3 - 16, $dy, ps_amt((float)$d['amount']), 8, false, 'R');
             $dy += 10;
         }
-        $pdf->text($c2, $dy, 'Tickets', 8, true);
+        $pdf->text($c2, $dy, 'Penalty Tickets', 8, true);
         $pdf->text($c3 - 16, $dy, ps_amt($b['tickets']), 8, false, 'R');
         $dy += 12;
         foreach (array_slice($b['ded_lines'], 0, 8) as $d) {

@@ -272,7 +272,7 @@ foreach ($employees as $e) {
   <div class="toolbar sticky-bottom">
     <?php if ($editable): ?>
       <button class="btn btn-primary">Save batch</button>
-      <span class="muted small">Only rows you changed are written. Values are hours (tickets and the amounts under “Others” are counts / pesos).</span>
+      <span class="muted small">Only rows you changed are written. Values are hours (the Penalty Tickets, the meal counts and the amounts under “Others” are counts / pesos).</span>
     <?php else: ?>
       <span class="muted small"><?= pt_period_editable($period, $side) ? 'Review mode — switch to Transaction to edit.' : 'This period is ' . h($period['status']) . ' and can no longer be edited.' ?></span>
     <?php endif; ?>

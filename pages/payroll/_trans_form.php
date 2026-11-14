@@ -36,7 +36,48 @@ if (!function_exists('pt_matrix_rows')) {
     function pt_field(string $field, array $t, bool $ro = false): string
     {
         $meta = PT_FIELDS[$field] ?? [$field, $field, 'others'];
-        return '<div class="field"><label for="f_' . h($field) . '">' . h($meta[0]) . '</label>' . pt_input($field, $t[$field] ?? 0, $ro) . '</div>';
+        $link = in_array($field, ['meal_comp', 'meal_comp_ot', 'tickets'], true) ? pt_count_link($field) : '';
+        return '<div class="field"><label for="f_' . h($field) . '">' . h($meta[0]) . '</label>' . pt_input($field, $t[$field] ?? 0, $ro)
+            . ($link !== '' ? '<small class="help pt-count-link">' . $link . '</small>' : '') . '</div>';
+    }
+
+    /**
+     * v34: what a count of the Others is paid or deducted with: the "Per Count" benefit of the Benefits Table
+     * (Meal compensation, Meal compensation OT) or the "Per Count" deduction code (Penalty Tickets), else the
+     * rate of the Payroll Parameters.
+     */
+    function pt_count_link(string $field): string
+    {
+        static $memo = [];
+        if (isset($memo[$field])) {
+            return $memo[$field];
+        }
+        $out = '';
+        try {
+            if ($field === 'tickets') {
+                $d = function_exists('payroll_count_deduction') ? payroll_count_deduction() : null;
+                if ($d) {
+                    $out = 'Deducted: x ' . h(money($d['default_amount'])) . ' (' . h($d['code']) . ', ' . h($d['name']) . ')';
+                } elseif (setting_num('ticket_rate', 0) > 0) {
+                    $out = 'Deducted: x ' . h(money(setting_num('ticket_rate', 0))) . ' (Payroll Parameters)';
+                } else {
+                    $out = 'No Per Count deduction code yet (Employee Transactions Table Setup)';
+                }
+            } else {
+                $b = mig_column_exists('benefit_types', 'count_field')
+                    ? row("SELECT code, name, default_amount FROM benefit_types WHERE is_active = 1 AND given_at = 'count' AND count_field = ? LIMIT 1", [$field]) : null;
+                $rate = setting_num($field === 'meal_comp' ? 'meal_comp_rate' : 'meal_comp_ot_rate', 0);
+                if ($b) {
+                    $out = 'Paid: x ' . h(money($b['default_amount'])) . ' (' . h($b['code']) . ', ' . h($b['name']) . ')';
+                } elseif ($rate > 0) {
+                    $out = 'Paid: x ' . h(money($rate)) . ' (Payroll Parameters)';
+                } else {
+                    $out = 'No Per Count benefit yet (Benefits Table)';
+                }
+            }
+        } catch (Throwable $e) {
+        }
+        return $memo[$field] = $out;
     }
 
     /** Duty / night-premium matrix table. */

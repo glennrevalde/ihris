@@ -15,7 +15,7 @@
  */
 require_once __DIR__ . '/engine/paytrans.php';
 
-const DB_VERSION = 26;
+const DB_VERSION = 27;
 
 function db_version(): int
 {
@@ -1372,10 +1372,29 @@ function migration_v26(): array
     ], 'settings' => [], 'seeds' => [], 'data' => []];
 }
 
+/**
+ * Version 27 (v34): Per Count. A benefit Given at "Per Count" pays its amount x a count of the Payroll
+ * Transaction (Meal compensation, Meal compensation OT); a deduction code with the computation "Per Count"
+ * deducts its amount x the Penalty Tickets of the Payroll Transaction (formerly Meal tickets availed).
+ */
+function migration_v27(): array
+{
+    return ['tables' => [], 'columns' => [
+        ['benefit_types', 'count_field', "VARCHAR(20) NULL COMMENT 'v34: Given at Per Count: the count of the Payroll Transaction (meal_comp, meal_comp_ot)'"],
+    ], 'modify' => [
+        ['benefit_types', 'given_at', "ENUM('fixed','duty_day_hol','duty_hour_hol','duty_week_hol','duty_day','duty_hour','duty_week','count') NOT NULL DEFAULT 'fixed'", 'count'],
+        ['deduction_types', 'computation', "ENUM('fixed','percent_basic','ledger','per_count') NOT NULL DEFAULT 'fixed'", 'per_count'],
+    ], 'settings' => [], 'seeds' => [], 'data' => [
+        "UPDATE settings SET label = 'Meal compensation rate (per count), when no Per Count benefit is set' WHERE skey = 'meal_comp_rate'",
+        "UPDATE settings SET label = 'Meal compensation OT rate (per count), when no Per Count benefit is set' WHERE skey = 'meal_comp_ot_rate'",
+        "UPDATE settings SET label = 'Penalty ticket amount (per ticket), when no Per Count deduction code is set' WHERE skey = 'ticket_rate'",
+    ]];
+}
+
 /** Every upgrade step in order: version => definitions. */
 function migrations_all(): array
 {
-    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21', 22 => 'migration_v22', 23 => 'migration_v23', 24 => 'migration_v24', 25 => 'migration_v25', 26 => 'migration_v26'];
+    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21', 22 => 'migration_v22', 23 => 'migration_v23', 24 => 'migration_v24', 25 => 'migration_v25', 26 => 'migration_v26', 27 => 'migration_v27'];
 }
 
 function mig_table_exists(string $t): bool
@@ -1551,7 +1570,8 @@ function db_upgrade_sql(int $version = DB_VERSION): string
         '23' => 'invalid-log window for every type of log, flexible shift types 4-6 without required hours',
         '24' => 'Hold / Resume of transactions with terms, holidays of daily-rated employees in the basic pay',
         '25' => 'Salary restriction: employees whose pay a user may not see',
-        '26' => 'Longer company / branch codes (Unique short code 40, Company code and Branch code 20 characters)'][(string)$version] ?? '';
+        '26' => 'Longer company / branch codes (Unique short code 40, Company code and Branch code 20 characters)',
+        '27' => 'Per Count: benefits paid per count and deductions per Penalty Ticket of the Payroll Transaction'][(string)$version] ?? '';
     $q = fn($v) => $v === null ? 'NULL' : "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], (string)$v) . "'";
     $out = [];
     $out[] = "-- =====================================================================";
