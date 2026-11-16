@@ -250,7 +250,7 @@ $optionFields = function (bool $inGrid) use ($def, $opt, $period, $modeLabels, $
   </div>
 
   <div class="grid-wrap csvi-wrap">
-    <table class="grid-entry csvi-grid" id="csviGrid">
+    <table class="grid-entry csvi-grid lite-grid" id="csviGrid" data-lite-grid><?php /* v34 fix: light cells, one editor at a time */ ?>
       <thead>
         <tr>
           <th class="sticky" style="min-width:64px">Line</th>
@@ -276,7 +276,7 @@ $optionFields = function (bool $inGrid) use ($def, $opt, $period, $modeLabels, $
             <?php if (!empty($r['norm']['employee_name'])): ?><small class="d-block muted"><?= h($r['norm']['employee_name']) ?></small><?php endif; ?></td>
           <?php foreach ($cols as $k => $c):
               $bad = isset($r['errors'][$k]); ?>
-            <td class="<?= $bad ? 'cell-bad' : '' ?>"<?= $bad ? ' title="' . h($r['errors'][$k]) . '"' : '' ?>><input class="csv-cell" type="text" value="<?= h($r['data'][$k] ?? '') ?>" data-r="<?= (int)$i ?>" data-k="<?= h($k) ?>" aria-label="<?= h($c[0]) ?>, line <?= (int)$r['line'] ?>" size="<?= max(6, min(22, mb_strlen((string)($r['data'][$k] ?? '')) + 2, mb_strlen($c[0]))) ?>"></td>
+            <td class="lc dimp-lc<?= $bad ? ' cell-bad' : '' ?>" tabindex="0" data-type="text" data-r="<?= (int)$i ?>" data-k="<?= h($k) ?>" data-orig="<?= h($r['data'][$k] ?? '') ?>" data-v="<?= h($r['data'][$k] ?? '') ?>" title="<?= $bad ? h($r['errors'][$k]) : h($c[0] . ', line ' . (int)$r['line']) ?>"><?= h($r['data'][$k] ?? '') ?></td>
           <?php endforeach; ?>
           <td class="center"><input type="checkbox" data-remove="<?= (int)$i ?>" aria-label="Remove line <?= (int)$r['line'] ?>"></td>
         </tr>
@@ -305,12 +305,14 @@ $optionFields = function (bool $inGrid) use ($def, $opt, $period, $modeLabels, $
   if (!form) return;
   form.addEventListener('submit', function () {
     var edits = {}, remove = [];
-    Array.prototype.forEach.call(form.querySelectorAll('input[data-k]'), function (inp) {
-      if (inp.value !== inp.defaultValue) {
-        var r = inp.getAttribute('data-r');
-        (edits[r] = edits[r] || {})[inp.getAttribute('data-k')] = inp.value;
+    if (document.activeElement && document.activeElement.classList.contains('lc-input')) document.activeElement.blur();   // v34: keep the cell being typed
+    // v34: light cells (td[data-k], value in data-v)
+    Array.prototype.forEach.call(form.querySelectorAll('td[data-k]'), function (td) {
+      var v = td.getAttribute('data-v') || '';
+      if (v !== (td.getAttribute('data-orig') || '')) {
+        var r = td.getAttribute('data-r');
+        (edits[r] = edits[r] || {})[td.getAttribute('data-k')] = v;
       }
-      inp.disabled = true;
     });
     Array.prototype.forEach.call(form.querySelectorAll('input[data-remove]'), function (cb) {
       if (cb.checked) remove.push(parseInt(cb.getAttribute('data-remove'), 10));
@@ -323,7 +325,7 @@ $optionFields = function (bool $inGrid) use ($def, $opt, $period, $modeLabels, $
   // a corrected cell loses its red mark at once
   form.addEventListener('input', function (e) {
     var td = e.target.closest('td.cell-bad');
-    if (td && e.target.value !== e.target.defaultValue) td.classList.add('cell-fixed');
+    if (td) td.classList.toggle('cell-fixed', (td.getAttribute('data-v') || '') !== (td.getAttribute('data-orig') || ''));
   });
 })();
 </script>

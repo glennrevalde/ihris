@@ -1775,7 +1775,7 @@ function dimp_panel(array $def): string
       </nav>
     </div>
     <div class="grid-wrap dimp-wrap">
-      <table class="grid-entry dimp-table csvi-grid">
+      <table class="grid-entry dimp-table csvi-grid lite-grid" data-lite-grid><?php /* v34 fix: light cells, one editor at a time (a page of 120 rows x 40 columns no longer freezes) */ ?>
         <thead><tr><th class="sticky">Line</th><th class="sticky-2">Status</th>
           <?php foreach ($cols as $k => $col): ?><th title="<?= h($col[2]) ?>"><?= h($col[0]) ?><?= $col[1] ? ' *' : '' ?></th><?php endforeach; ?><th>Remove</th></tr></thead>
         <tbody>
@@ -1790,7 +1790,7 @@ function dimp_panel(array $def): string
             <td class="txt sticky"><?= (int)$r['line'] ?></td>
             <td class="txt sticky-2 dimp-status st-<?= h($r['status']) ?>"><?= h($statusLabel[$r['status']] ?? $r['status']) ?><?php if (!empty($r['norm']['employee_name'])): ?><small class="d-block muted"><?= h($r['norm']['employee_name']) ?></small><?php endif; ?></td>
             <?php foreach ($cols as $k => $col): $bad = isset($r['errors'][$k]); ?>
-              <td class="<?= $bad ? 'cell-bad' : '' ?>"<?= $bad ? ' title="' . h($r['errors'][$k]) . '"' : '' ?>><input class="csv-cell" type="text" value="<?= h($r['data'][$k] ?? '') ?>" data-r="<?= (int)$i ?>" data-k="<?= h($k) ?>" aria-label="<?= h($col[0]) ?>, line <?= (int)$r['line'] ?>" size="<?= max(6, min(24, mb_strlen((string)($r['data'][$k] ?? '')) + 2, mb_strlen($col[0]))) ?>"></td>
+              <td class="lc dimp-lc<?= $bad ? ' cell-bad' : '' ?>" tabindex="0" data-type="text" data-r="<?= (int)$i ?>" data-k="<?= h($k) ?>" data-orig="<?= h($r['data'][$k] ?? '') ?>" data-v="<?= h($r['data'][$k] ?? '') ?>" title="<?= $bad ? h($r['errors'][$k]) : h($col[0] . ', line ' . (int)$r['line']) ?>"><?= h($r['data'][$k] ?? '') ?></td>
             <?php endforeach; ?>
             <td class="center"><input type="checkbox" data-remove="<?= (int)$i ?>" aria-label="Remove line <?= (int)$r['line'] ?>"></td>
           </tr>

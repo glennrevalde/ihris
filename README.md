@@ -206,6 +206,20 @@ Demo data covers **August–September 2026**: August has approved cutoffs and fi
 | Multi-location hours listed by Co. / Branch | Payroll Batch Transaction and Attendance Batch Transaction Entry: choosing a company / branch lists its employees **and** everyone whose multi-location entry has hours there. Their row shows only the hours of that branch (*Part of a multi-location transaction*); saving it changes that location and the total becomes the sum of the locations again. All companies lists every transaction whole. |
 | Payroll Register and payslips by branch | Payroll Batch Register → Co. / Branch: the employees of the branch plus the multi-location employees who worked there, each with only the pay earned in that branch, its share of the employer contributions and the deductions when it is the deduction source (*Branch part*). The branch totals of all branches add up to the *All* register. **Branch payslip** opens the payslip on that branch's tab. Print Payslips with a company / branch prints the branch payslip of those employees; with All, one consolidated payslip each (or split). Print and CSV export follow the same filter. |
 
+### Fix after version 34 (2): the other large grids no longer hang either
+
+Every page was checked with 355 employees. The same light grid (plain cells, one editor at a time, Enter / arrow keys / Tab to move, Esc to cancel) is now used by:
+
+* **Masterfile Batch Edit**: up to 500 employees x the chosen columns were 2,500 lists with 14,600 choices and 1,500 boxes (650-770 ms of blocking on a fast PC); now about 160 ms, no freeze when scrolling. The choices of each list column are written once; Save still sends only the changed cells; Undo changes and the change counter work as before.
+* **Employee's Bank Setup**: one bank, account no. and account type per employee (700 boxes and 360 lists); Save now sends only the changed rows.
+* **The grids of every CSV / Excel import** (setup tables, Payroll / Attendance Transaction, Employee's Transactions, Fixed Transactions, deductions, benefits ...): a page of 120 rows x up to 57 columns was up to 6,900 boxes. Wrong cells stay red and turn amber when corrected, Remove, Check data and Save work as before.
+
+The screens with one checkbox per employee (Auto-Generate Transactions, Attendance Closing, Batch Shift Define, User Access) stay as they are: checkboxes are light and those pages load in about 0.1 s with 355 employees. The stylesheet loads as `app.css?v=41`, the script as `app.js?v=38`.
+
+### Fix after version 34: "Page Unresponsive" on Attendance / Payroll Batch Transaction Entry
+
+With several hundred employees in a period the batch grid held thousands of number inputs (348 employees x 41 columns = about 14,000), which made the browser freeze while loading, scrolling and typing. The grid is now a light grid: the cells are plain table cells and only the cell being edited holds an input. Click, tap or Tab into a cell to type; Enter or the arrow keys move to the next cell, Esc cancels the cell. Totals, the leave rule of the monthly-rated (hours work = perfect hours less leaves), View column, Split and the unsaved-changes warning work as before, and Save batch now sends only the rows that were changed. Measured with 349 employees: no freeze when scrolling or hovering (was 150-250 ms per scroll step), typing a value about 60 ms (was about 1.8 s). The stylesheet loads as `app.css?v=40`, the script as `app.js?v=37`.
+
 ### Additions in version 34: Per Count benefits and the Penalty Tickets deduction
 
 Database version 27: open the site once (it upgrades by itself) or import `database/upgrade_to_v27_mysql55.sql` (MySQL 5.5, safe to run more than once; it adds *Per Count* to `benefit_types.given_at` and `deduction_types.computation`, and `benefit_types.count_field`). The stylesheet loads as `app.css?v=39`, the script as `app.js?v=36`.

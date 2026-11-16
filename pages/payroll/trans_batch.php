@@ -193,7 +193,9 @@ foreach ($employees as $e) {
   <?= csrf_field() ?>
   <input type="hidden" name="cutoff_id" value="<?= (int)$period['id'] ?>">
   <div class="grid-wrap" id="batchGridWrap">
-    <table class="grid-entry" id="batchGrid">
+    <!-- v34 fix: a light grid (data-lite-grid): the cells are plain table cells and only the cell being edited holds an
+         input, so a period of several hundred employees (thousands of cells) stays fast to scroll and type in -->
+    <table class="grid-entry lite-grid" id="batchGrid" data-lite-grid>
       <thead>
         <tr class="grp">
           <th class="sticky" style="width:88px">&nbsp;</th>
@@ -238,11 +240,13 @@ foreach ($employees as $e) {
                   $v = (float)$sv['vals'][$f];
                   $val = $f === 'tickets' ? ($v ? (string)(int)$v : '') : ($v ? number_format($v, 2, '.', '') : '');
                   $locked = $branchF && $g === 'others' && !$sv['src'];   // Others amounts belong to the deduction source
-                  printf('<td data-col-group="%s"%s>%s</td>', h($g), $locked ? ' class="cell-na" title="Charged to the deduction source"' : '',
-                      $rowEdit && !$locked
-                          ? sprintf('<input class="cell%s" type="number" step="%s" min="0" value="%s" data-cell="1" data-row="%d" data-field="%s" title="%s">',
-                              $v ? '' : ' zero', $f === 'tickets' ? '1' : '0.01', h($val), (int)$e['id'], h($f), h(PT_FIELDS[$f][0] . ' — ' . full_name($e)))
-                          : '<span style="display:block;padding:6px 8px;text-align:right">' . h($val) . '</span>');
+                  if ($rowEdit && !$locked) {
+                      // an editable cell: the value is text, an input appears when the cell is clicked or reached with Tab
+                      printf('<td data-col-group="%s" class="lc%s" tabindex="0" data-cell="1" data-row="%d" data-field="%s" data-step="%s" data-v="%s" title="%s">%s</td>',
+                          h($g), $v ? '' : ' zero', (int)$e['id'], h($f), $f === 'tickets' ? '1' : '0.01', h($val), h(PT_FIELDS[$f][0] . ' — ' . full_name($e)), h($val));
+                  } else {
+                      printf('<td data-col-group="%s"%s><span class="lc-ro">%s</span></td>', h($g), $locked ? ' class="cell-na" title="Charged to the deduction source"' : '', h($val));
+                  }
               }
           } ?>
           <?php $srcB = $r && !empty($r['deduction_branch_id']) && (int)$r['deduction_branch_id'] !== (int)$e['default_branch_id'] ? (int)$r['deduction_branch_id'] : 0; ?>

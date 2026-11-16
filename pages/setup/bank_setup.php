@@ -1,5 +1,9 @@
 <?php
-/** Employee's Bank Setup — edit payroll bank, account number and account type of many employees at once. */
+/**
+ * Employee's Bank Setup — edit payroll bank, account number and account type of many employees at once.
+ * v34 fix: light grid (plain cells, one editor at a time): several hundred employees no longer freeze the page,
+ * and Save sends only the rows that were changed.
+ */
 if (is_post()) {
     $payload = json_decode((string)post('payload', '{}'), true) ?: [];
     $n = 0;
@@ -46,18 +50,19 @@ page_header("Employee's Bank Setup", ['subtitle' => 'Payroll bank and account of
 <form method="post" class="card" data-json-grid>
   <?= csrf_field() ?><input type="hidden" name="payload" value="{}">
   <datalist id="bankList"><?php foreach ($banks as $b): ?><option value="<?= h($b) ?>"><?php endforeach; ?></datalist>
+  <script type="application/json" id="bankTypes"><?= json_encode(array_merge([['', '—']], array_map(fn($k, $v) => [(string)$k, (string)$v], array_keys(EMP_ACCOUNT_TYPES), EMP_ACCOUNT_TYPES)), JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
   <div class="table-tools"><input type="search" class="input table-search" placeholder="Search employee..." data-target="bank-table"><span class="muted"><?= count($emps) ?> employee(s)</span>
-    <span class="spacer"></span><span class="dirty-count muted"></span><button class="btn btn-primary">Save changes</button></div>
-  <div class="table-wrap"><table class="table table-compact" id="bank-table">
+    <span class="spacer"></span><span class="muted small">Click a cell to edit it; Enter moves down.</span><button class="btn btn-primary">Save changes</button></div>
+  <div class="table-wrap table-scroll"><table class="table table-compact lite-grid bank-grid" id="bank-table" data-lite-grid>
     <thead><tr><th>Employee ID</th><th>Employee name</th><th>Department</th><th style="width:22%">Bank</th><th style="width:20%">Account no.</th><th style="width:14%">Account type</th></tr></thead>
     <tbody>
     <?php if (!$emps) echo empty_row(6); ?>
     <?php foreach ($emps as $e): $id = (int)$e['id']; ?>
       <tr>
         <td><?= h($e['employee_no']) ?></td><td><?= h(full_name($e)) ?></td><td class="small muted"><?= h($e['unit_name']) ?></td>
-        <td><input class="input input-sm" list="bankList" data-cell data-row="<?= $id ?>" data-field="bank_name" value="<?= h($e['bank_name']) ?>"></td>
-        <td><input class="input input-sm" data-cell data-row="<?= $id ?>" data-field="bank_account_no" value="<?= h($e['bank_account_no']) ?>"></td>
-        <td><select class="input input-sm" data-cell data-row="<?= $id ?>" data-field="bank_account_type"><?= options(EMP_ACCOUNT_TYPES, $e['bank_account_type'], '—') ?></select></td>
+        <td class="lc" tabindex="0" data-type="text" data-list="bankList" data-max="80" data-cell data-row="<?= $id ?>" data-field="bank_name" data-orig="<?= h($e['bank_name']) ?>" data-v="<?= h($e['bank_name']) ?>" title="Bank — <?= h(full_name($e)) ?>"><?= h($e['bank_name']) ?></td>
+        <td class="lc" tabindex="0" data-type="text" data-max="40" data-cell data-row="<?= $id ?>" data-field="bank_account_no" data-orig="<?= h($e['bank_account_no']) ?>" data-v="<?= h($e['bank_account_no']) ?>" title="Account no. — <?= h(full_name($e)) ?>"><?= h($e['bank_account_no']) ?></td>
+        <td class="lc" tabindex="0" data-type="select" data-opts="bankTypes" data-cell data-row="<?= $id ?>" data-field="bank_account_type" data-orig="<?= h((string)$e['bank_account_type']) ?>" data-v="<?= h((string)$e['bank_account_type']) ?>" title="Account type — <?= h(full_name($e)) ?>"><?= h(EMP_ACCOUNT_TYPES[$e['bank_account_type']] ?? (string)$e['bank_account_type']) ?></td>
       </tr>
     <?php endforeach; ?>
     </tbody>

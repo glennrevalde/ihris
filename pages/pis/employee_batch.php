@@ -285,7 +285,22 @@ page_header('Masterfile Batch Edit', [
       <?php if ($canEdit && $list): ?><div class="eb-tools"><span class="eb-count muted small" aria-live="polite">No change yet</span><button type="button" class="btn btn-sm" data-eb-undo>Undo changes</button><button class="btn btn-primary btn-sm">Save changes</button></div><?php endif; ?>
     </div>
     <div class="table-wrap table-scroll eb-wrap">
-      <table class="table table-compact eb-grid">
+      <?php
+      // v34 fix: light grid. Every cell is plain text; the input or the list appears only in the cell being edited, so
+      // 500 employees x many columns no longer freeze the page. The choices of each list column are written once here.
+      $ebOpts = [];
+      foreach ($pick as $k) {
+          [, $type, $opts] = $cols[$k];
+          if ($type === 'select' || $type === 'yesno') {
+              $o = in_array($k, EMP_BATCH_REQUIRED, true) ? [] : [['', '—']];
+              foreach ((array)$opts as $ov => $ol) {
+                  $o[] = [(string)$ov, (string)$ol];
+              }
+              $ebOpts[$k] = $o;
+              echo '<script type="application/json" id="ebo-' . h($k) . '">' . json_encode($o, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP) . '</script>';
+          }
+      } ?>
+      <table class="table table-compact eb-grid lite-grid" data-lite-grid>
         <thead><tr><th class="eb-sticky">Employee</th><?php foreach ($pick as $k): ?><th><?= h($cols[$k][0]) ?></th><?php endforeach; ?></tr></thead>
         <tbody>
         <?php if (!$list) echo empty_row(count($pick) + 1, scope_def()['none'] ? 'No company / branch or department is assigned to your account.' : 'No employee for these filters.'); ?>
@@ -307,13 +322,11 @@ page_header('Masterfile Batch Edit', [
                 if ($k === 'day_off') {
                     $val = day_off_label($e['day_off'], true);
                 } ?>
-              <td>
-                <?php if ($type === 'select' || $type === 'yesno'): ?>
-                  <select class="eb-cell <?= h($w) ?>" name="<?= h($name) ?>" data-orig="<?= h($val) ?>" aria-label="<?= h($lbl) ?>"<?= $ro ? ' disabled data-ro="1"' : '' ?>><?= options($opts + ($val !== '' && !isset($opts[$val]) ? [$val => '#' . $val] : []), $val, in_array($k, EMP_BATCH_REQUIRED, true) ? null : '—') ?></select>
-                <?php else: ?>
-                  <input class="eb-cell <?= h($w) ?>" type="<?= $type === 'date' ? 'date' : ($type === 'number' || $type === 'int' ? 'number' : 'text') ?>"<?= $type === 'number' ? ' step="0.01" min="0"' : ($type === 'int' ? ' step="1" min="0"' : '') ?> name="<?= h($name) ?>" value="<?= h($val) ?>" data-orig="<?= h($val) ?>" aria-label="<?= h($lbl) ?>"<?= $ro ? ' readonly data-ro="1"' : '' ?>>
-                <?php endif; ?>
-              </td>
+              <?php
+                $isList = $type === 'select' || $type === 'yesno';
+                $shown = $isList ? ($val === '' ? '' : (string)($opts[$val] ?? '#' . $val)) : $val;
+                $lt = $isList ? 'select' : ($type === 'date' ? 'date' : ($type === 'number' ? 'number' : ($type === 'int' ? 'int' : 'text'))); ?>
+              <td class="lc eb-lc <?= h($w) ?><?= $ro ? ' is-ro' : '' ?>"<?= $ro ? ' data-ro="1"' : ' tabindex="0"' ?> data-type="<?= $lt ?>" data-name="<?= h($name) ?>" data-orig="<?= h($val) ?>" data-v="<?= h($val) ?>"<?= $isList ? ' data-opts="ebo-' . h($k) . '"' : '' ?><?= $lt === 'number' || $lt === 'int' ? ' data-keep-zero' : '' ?> title="<?= h($lbl . ' — ' . full_name($e)) ?>"><?= h($shown) ?></td>
             <?php endforeach; ?>
           </tr>
         <?php endforeach; ?>
@@ -362,34 +375,44 @@ page_header('Masterfile Batch Edit', [
   }
   var form = document.getElementById('ebForm');
   if (!form) return;
-  var cells = Array.prototype.slice.call(form.querySelectorAll('.eb-cell'));
+  // v34 fix: the cells are light cells (td.eb-lc, value in data-v; the editor is the light grid of app.js)
+  var cells = Array.prototype.slice.call(form.querySelectorAll('td.eb-lc:not([data-ro])'));
   var counters = Array.prototype.slice.call(form.querySelectorAll('.eb-count'));
+  var isCh = function (c) { return (c.getAttribute('data-v') || '') !== (c.getAttribute('data-orig') || ''); };
   var mark = function () {
-    var n = 0, rows = {};
+    var n = 0, rows = {}, dirtyRows = [];
     cells.forEach(function (c) {
-      var ch = c.value !== c.getAttribute('data-orig');
-      c.classList.toggle('is-changed', ch);
-      var tr = c.closest('tr');
-      if (ch) { n++; rows[c.name.split(']')[0]] = 1; }
-      tr.classList.toggle('is-dirty', !!tr.querySelector('.is-changed'));
+      var ch = isCh(c);
+      if (c.classList.contains('is-changed') !== ch) c.classList.toggle('is-changed', ch);
+      if (ch) { n++; rows[c.getAttribute('data-name').split(']')[0]] = 1; dirtyRows.push(c.parentNode); }
     });
+    Array.prototype.forEach.call(form.querySelectorAll('tr.is-dirty'), function (tr) { if (dirtyRows.indexOf(tr) < 0) tr.classList.remove('is-dirty'); });
+    dirtyRows.forEach(function (tr) { tr.classList.add('is-dirty'); });
     var r = Object.keys(rows).length;
     counters.forEach(function (o) { o.textContent = n ? n + ' change(s) on ' + r + ' employee(s)' : 'No change yet'; });
     form.setAttribute('data-dirty', n ? '1' : '');
   };
-  form.addEventListener('input', mark);
-  form.addEventListener('change', mark);
+  var pending = 0;
+  var later = function () { if (!pending) pending = requestAnimationFrame(function () { pending = 0; mark(); }); };
+  form.addEventListener('input', later);
+  form.addEventListener('change', later);
   form.addEventListener('click', function (e) {
     if (!e.target.closest('[data-eb-undo]')) return;
-    cells.forEach(function (c) { c.value = c.getAttribute('data-orig'); });
+    cells.forEach(function (c) { if (isCh(c)) window.gsLiteSet(c, c.getAttribute('data-orig') || ''); });
     mark();
   });
   form.addEventListener('submit', function (e) {
-    var changed = cells.filter(function (c) { return c.classList.contains('is-changed'); });
+    if (document.activeElement && document.activeElement.classList.contains('lc-input')) document.activeElement.blur();
+    mark();
+    var changed = cells.filter(isCh);
     if (!changed.length) { e.preventDefault(); alert('Nothing was changed.'); return; }
     // only the changed cells are sent (a large grid stays under the limits of the server)
-    cells.forEach(function (c) { if (!c.classList.contains('is-changed')) c.disabled = true; });
-    setTimeout(function () { cells.forEach(function (c) { if (!c.hasAttribute('data-ro')) c.disabled = false; }); }, 4000);
+    Array.prototype.forEach.call(form.querySelectorAll('input.eb-post'), function (x) { x.remove(); });
+    changed.forEach(function (c) {
+      var h = document.createElement('input');
+      h.type = 'hidden'; h.className = 'eb-post'; h.name = c.getAttribute('data-name'); h.value = c.getAttribute('data-v') || '';
+      form.appendChild(h);
+    });
   });
 })();
 </script>

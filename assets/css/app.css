@@ -2467,3 +2467,37 @@ table.reg.reg-summary td.nowrap { font-weight: 600; }
 @media (max-width: 720px) { .filters label.prpt-nozero { flex: 1 1 100%; } }
 .filters label.prpt-nozero input { width: 16px; min-width: 0; height: 16px; min-height: 0; padding: 0; }
 .pt-count-link { display: block; margin-top: 4px; font-size: 11.5px; color: var(--muted); line-height: 1.35; }
+
+/* ===================================================================== v34 fix: light entry grid (large batches) */
+.grid-entry td.lc { min-width: 64px; height: 30px; padding: 4px 7px; text-align: right; font-variant-numeric: tabular-nums; cursor: text; outline: none; }
+.grid-entry td.lc.zero { color: #b5bfcf; }
+.grid-entry td.lc:hover { background: #f7f9ff; }
+.grid-entry td.lc:focus { box-shadow: inset 0 0 0 2px var(--ring); }
+.grid-entry td.lc.editing { padding: 0; }
+.grid-entry td.lc.editing input.lc-input { display: block; width: 100%; min-width: 64px; height: 30px; min-height: 30px; margin: 0; border: 0; border-radius: 0; padding: 4px 7px; text-align: right; font: inherit; font-variant-numeric: tabular-nums; background: #fff; box-shadow: inset 0 0 0 2px var(--primary); -moz-appearance: textfield; }
+.grid-entry td.lc.editing input.lc-input::-webkit-outer-spin-button, .grid-entry td.lc.editing input.lc-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.grid-entry tr.dirty td.lc { background: #fffbeb; }
+.grid-entry .lc-ro { display: block; padding: 6px 8px; text-align: right; }
+/* light cells of the Masterfile Batch Edit, the Bank Setup and the import grids */
+.lite-grid td.lc { cursor: text; outline: none; white-space: nowrap; }
+.lite-grid td.lc:focus { box-shadow: inset 0 0 0 2px var(--ring); }
+.lite-grid td.lc.editing { padding: 0 !important; }
+.lite-grid td.lc .lc-input { display: block; width: 100%; height: 32px; min-height: 32px; margin: 0; border: 0; border-radius: 0; padding: 4px 8px; font: inherit; background: #fff; box-shadow: inset 0 0 0 2px var(--primary); }
+.lite-grid td.lc select.lc-input { padding-right: 26px; }
+.lite-grid td.lc input[type=number].lc-input { text-align: right; -moz-appearance: textfield; }
+.lite-grid td.lc input[type=number].lc-input::-webkit-outer-spin-button, .lite-grid td.lc input[type=number].lc-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.eb-grid td.eb-lc { height: 32px; padding: 4px 8px; font-size: 12.5px; border-left: 1px solid var(--border); }
+.eb-grid td.eb-lc:not(.is-ro):hover { background: #f7f9ff; }
+.eb-grid td.eb-lc.is-ro { color: var(--muted); cursor: default; background: var(--surface-2); }
+.eb-grid td.eb-lc.w-xs { min-width: 84px; } .eb-grid td.eb-lc.w-sm { min-width: 110px; } .eb-grid td.eb-lc.w-md { min-width: 150px; } .eb-grid td.eb-lc.w-lg { min-width: 210px; } .eb-grid td.eb-lc.w-xl { min-width: 280px; }
+.eb-grid td.eb-lc.is-changed { background: #fffbeb; box-shadow: inset 0 0 0 1px var(--amber); }
+.eb-grid td.eb-lc[data-type=number], .eb-grid td.eb-lc[data-type=int] { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .eb-grid td.eb-lc.w-lg { min-width: 170px; } }
+.bank-grid td.lc { height: 36px; padding: 6px 10px; border-left: 1px solid var(--border); }
+.bank-grid td.lc:hover { background: #f7f9ff; }
+.bank-grid td.lc.is-changed { background: #fffbeb; box-shadow: inset 0 0 0 1px var(--amber); }
+.csvi-grid td.dimp-lc { min-width: 72px; height: 30px; padding: 5px 8px; text-align: left; }
+.csvi-grid td.dimp-lc:hover { background: #f7f9ff; }
+.csvi-grid td.dimp-lc.cell-bad { color: var(--red); font-weight: 600; }
+.csvi-grid td.dimp-lc.cell-fixed { color: var(--text); font-weight: 400; }
+.csvi-grid td.dimp-lc.is-changed:not(.cell-bad) { background: #fffbeb; }

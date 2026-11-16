@@ -224,7 +224,7 @@
   });
   document.addEventListener('keydown', function (e) {
     var el = e.target;
-    if (!el.matches || !el.matches('.grid-entry input')) return;
+    if (!el.matches || !el.matches('.grid-entry input') || el.classList.contains('lc-input')) return;   // v34: the light grid moves itself
     if (['ArrowDown', 'ArrowUp', 'Enter'].indexOf(e.key) === -1) return;
     if (el.type === 'number' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) e.preventDefault();
     var td = el.closest('td'), tr = el.closest('tr');
@@ -245,16 +245,20 @@
     var v = parseFloat(inp.value || '0');
     inp.classList.toggle('zero', !v);
   }
+  // v34: the value of an entry cell, an input or a cell of a light grid (td.lc, value in data-v)
+  function cellVal(el) { return el.tagName === 'TD' ? (el.getAttribute('data-v') || '') : el.value; }
+  window.gsCellVal = cellVal;
   function recalcGrid(grid) {
     // column totals in tfoot: <td data-total="field">
     var totals = {};
-    $$('input.cell', grid).forEach(function (inp) {
+    $$('input.cell, td.lc', grid).forEach(function (inp) {
       var f = inp.getAttribute('data-field');
-      totals[f] = (totals[f] || 0) + (parseFloat(inp.value || '0') || 0);
+      totals[f] = (totals[f] || 0) + (parseFloat(cellVal(inp) || '0') || 0);
     });
     $$('[data-total]', grid).forEach(function (td) {
       var f = td.getAttribute('data-total');
-      td.textContent = totals[f] ? fmt(totals[f]) : '';
+      var txt = totals[f] ? fmt(totals[f]) : '';
+      if (td.textContent !== txt) td.textContent = txt;   // an unchanged total is not rewritten (no relayout of a large grid)
     });
     // row totals: <td data-row-total> sums inputs of that row
     $$('tr', grid).forEach(function (tr) {
@@ -268,16 +272,24 @@
   $$('.grid-entry').forEach(function (grid) {
     $$('input.cell', grid).forEach(dim);
     recalcGrid(grid);
+    var pending = 0;
     grid.addEventListener('input', function (e) {
-      if (!e.target.classList.contains('cell')) return;
-      dim(e.target);
-      var tr = e.target.closest('tr');
+      var t = e.target;
+      if (!t.classList.contains('cell') && !t.classList.contains('lc-input') && !t.classList.contains('lc')) return;
+      if (t.classList.contains('cell')) dim(t);
+      var tr = t.closest('tr');
       if (tr) tr.classList.add('dirty');
       var f = e.target.closest('form');
       if (f) f.setAttribute('data-dirty', '1');
-      recalcGrid(grid);
-      var c = document.getElementById('dirtyCount');
-      if (c) c.textContent = $$('tr.dirty', grid).length;
+      // v34: the totals follow at the next frame (typing fast in a large grid stays smooth)
+      if (!pending) {
+        pending = requestAnimationFrame(function () {
+          pending = 0;
+          recalcGrid(grid);
+          var c = document.getElementById('dirtyCount');
+          if (c) c.textContent = $$('tr.dirty', grid).length;
+        });
+      }
     });
   });
   // live totals for single-record hour forms
@@ -354,12 +366,14 @@
     var find = function (f) { return box.querySelector('[name="' + f + '"], [data-field="' + f + '"]'); };
     var work = find('hours_work');
     if (!work || work.readOnly || work.disabled) return;
+    var val = window.gsCellVal || function (el) { return el.value; };
     var leaves = 0;
-    LEAVE_FIELDS.forEach(function (f) { var i = find(f); if (i) leaves += parseFloat(i.value || '0') || 0; });
+    LEAVE_FIELDS.forEach(function (f) { var i = find(f); if (i) leaves += parseFloat(val(i) || '0') || 0; });
     var target = Math.max(0, Math.round((perfect - leaves) * 100) / 100);
-    var cur = parseFloat(work.value || '0') || 0;
+    var cur = parseFloat(val(work) || '0') || 0;
     if (leaves > 0 && Math.abs(cur - target) > 0.004) {
-      work.value = target.toFixed(2);
+      if (work.tagName === 'TD' && window.gsLiteSet) window.gsLiteSet(work, target.toFixed(2));   // v34: a cell of a light grid
+      else work.value = target.toFixed(2);
       work.classList.remove('zero');
       work.dispatchEvent(new Event('input', { bubbles: true }));
       var tr = work.closest('tr'); if (tr) tr.classList.add('dirty');
@@ -370,7 +384,7 @@
   document.addEventListener('input', function (e) {
     var el = e.target;
     if (!el.matches) return;
-    var f = el.getAttribute('name') || el.getAttribute('data-field') || '';
+    var f = el.getAttribute('name') || el.getAttribute('data-field') || (el.classList.contains('lc-input') && el.parentNode ? el.parentNode.getAttribute('data-field') : '') || '';
     if (LEAVE_FIELDS.indexOf(f) === -1) return;
     var box = el.closest('[data-perfect-hours]');
     if (box) leaveRule(box);
@@ -387,10 +401,14 @@
   $$('form[data-json-grid]').forEach(function (form) {
     form.addEventListener('submit', function () {
       var payload = {};
+      if (document.activeElement && document.activeElement.classList.contains('lc-input')) document.activeElement.blur();   // v34: keep the cell being typed
+      var lite = form.querySelector('table[data-lite-grid]');
       $$('[data-cell]', form).forEach(function (inp) {
+        // v34: a light grid sends only the rows that were changed (the others are left as they are)
+        if (lite) { var tr = inp.closest('tr'); if (tr && !tr.classList.contains('dirty')) return; }
         var row = inp.getAttribute('data-row'), field = inp.getAttribute('data-field');
         if (!payload[row]) payload[row] = {};
-        payload[row][field] = inp.type === 'checkbox' ? (inp.checked ? 1 : 0) : inp.value;
+        payload[row][field] = inp.tagName === 'TD' ? (inp.getAttribute('data-v') || '') : (inp.type === 'checkbox' ? (inp.checked ? 1 : 0) : inp.value);
       });
       var hidden = form.querySelector('input[name="payload"]');
       if (!hidden) {
@@ -876,12 +894,21 @@
   document.querySelectorAll('form[data-dimp-grid]').forEach(function (form) {
     form.addEventListener('submit', function () {
       var edits = {}, remove = [];
+      if (document.activeElement && document.activeElement.classList.contains('lc-input')) document.activeElement.blur();   // v34: keep the cell being typed
       form.querySelectorAll('input[data-k]').forEach(function (inp) {
         if (inp.value !== inp.defaultValue) {
           var r = inp.getAttribute('data-r');
           (edits[r] = edits[r] || {})[inp.getAttribute('data-k')] = inp.value;
         }
         inp.disabled = true;
+      });
+      // v34: the light cells of the grid (td[data-k], value in data-v)
+      form.querySelectorAll('td[data-k]').forEach(function (td) {
+        var v = td.getAttribute('data-v') || '';
+        if (v !== (td.getAttribute('data-orig') || '')) {
+          var r = td.getAttribute('data-r');
+          (edits[r] = edits[r] || {})[td.getAttribute('data-k')] = v;
+        }
       });
       form.querySelectorAll('input[data-remove]').forEach(function (cb) {
         if (cb.checked) remove.push(parseInt(cb.getAttribute('data-remove'), 10));
@@ -893,7 +920,9 @@
     });
     form.addEventListener('input', function (e) {
       var td = e.target.closest('td.cell-bad');
-      if (td && e.target.value !== e.target.defaultValue) td.classList.add('cell-fixed');
+      if (!td) return;
+      var now = td.hasAttribute('data-orig') ? (td.getAttribute('data-v') || '') !== td.getAttribute('data-orig') : e.target.value !== e.target.defaultValue;
+      td.classList.toggle('cell-fixed', now);
     });
   });
 })();
@@ -1143,6 +1172,162 @@
   }
   sel.addEventListener('change', run);
   run();
+})();
+
+/* v34 fix: light entry grids (table[data-lite-grid]). A grid of several hundred employees has thousands of cells: as
+   inputs and selects they made the page freeze ("Page Unresponsive"). The cells are plain table cells now (td.lc, the
+   value in data-v); a click, a tap or Tab on a cell puts ONE editor in it, Enter / arrow keys move to the next cell,
+   Esc cancels the cell. Used by the Attendance / Payroll Batch Transaction Entry, the Masterfile Batch Edit, the
+   Employee's Bank Setup and the grids of the CSV / Excel imports.
+   A cell: <td class="lc" tabindex="0" data-v="value" [data-type="number|int|text|date|select"] [data-step]
+           [data-opts="id of a <script type=application/json> [[value, label], ...]"] [data-list="datalist id"]>shown</td> */
+(function () {
+  'use strict';
+  var grids = Array.prototype.slice.call(document.querySelectorAll('table[data-lite-grid]'));
+  if (!grids.length) return;
+  var optCache = {};
+  function opts(td) {
+    var id = td.getAttribute('data-opts');
+    if (!id) return null;
+    if (!optCache[id]) {
+      var el = document.getElementById(id);
+      try { optCache[id] = el ? JSON.parse(el.textContent) : []; } catch (err) { optCache[id] = []; }
+    }
+    return optCache[id];
+  }
+  function type(td) { return td.getAttribute('data-type') || 'number'; }
+  function label(td, v) {
+    var t = type(td);
+    if (t === 'select') {
+      var o = opts(td) || [];
+      for (var i = 0; i < o.length; i++) { if (String(o[i][0]) === String(v)) return o[i][1]; }
+      return v ? '#' + v : '';
+    }
+    if (t === 'number' || t === 'int') {
+      if (v === '' || v === null) return '';
+      var n = parseFloat(v);
+      if (isNaN(n)) return v;
+      if (td.hasAttribute('data-keep-zero')) return td.getAttribute('data-step') === '1' || t === 'int' ? String(Math.round(n)) : n.toFixed(2);
+      return !n ? '' : (td.getAttribute('data-step') === '1' || t === 'int' ? String(Math.round(n)) : n.toFixed(2));
+    }
+    return v;
+  }
+  function show(td, v) {
+    td.textContent = label(td, v);
+    var t = type(td);
+    if (t === 'number' || t === 'int') td.classList.toggle('zero', !(parseFloat(v || '0') || 0));
+    td.classList.toggle('is-empty', v === '' || v === null);
+  }
+  function changed(td) {
+    if (td.hasAttribute('data-orig')) {
+      var ch = (td.getAttribute('data-v') || '') !== (td.getAttribute('data-orig') || '');
+      td.classList.toggle('is-changed', ch);
+    }
+  }
+  function set(td, v) {
+    td.setAttribute('data-v', v);
+    var ed = td.querySelector('.lc-input');
+    if (ed) ed.value = v; else show(td, v);
+    changed(td);
+  }
+  window.gsLiteSet = set;
+  function close(td, cancel) {
+    var ed = td.querySelector('.lc-input');
+    if (!ed) return;
+    if (cancel) {
+      td.setAttribute('data-v', ed.getAttribute('data-orig') || '');
+      changed(td);
+      td.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    td.classList.remove('editing');
+    td.tabIndex = 0;
+    show(td, td.getAttribute('data-v'));
+  }
+  function open(td) {
+    if (td.querySelector('.lc-input') || td.hasAttribute('data-ro')) return;
+    var t = type(td), ed;
+    if (t === 'select') {
+      ed = document.createElement('select');
+      (opts(td) || []).forEach(function (o) { var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; ed.appendChild(op); });
+      var cur = td.getAttribute('data-v') || '';
+      if (cur !== '' && !Array.prototype.some.call(ed.options, function (op) { return op.value === cur; })) { var x = document.createElement('option'); x.value = cur; x.textContent = '#' + cur; ed.appendChild(x); }
+    } else {
+      ed = document.createElement('input');
+      if (t === 'number' || t === 'int') {
+        ed.type = 'number'; ed.min = '0'; ed.step = t === 'int' ? '1' : (td.getAttribute('data-step') || '0.01');
+        ed.inputMode = ed.step === '1' ? 'numeric' : 'decimal';
+      } else {
+        ed.type = t === 'date' ? 'date' : 'text';
+        if (td.getAttribute('data-list')) ed.setAttribute('list', td.getAttribute('data-list'));
+        if (td.getAttribute('data-max')) ed.maxLength = parseInt(td.getAttribute('data-max'), 10);
+      }
+    }
+    ed.className = 'lc-input';
+    ed.value = td.getAttribute('data-v') || '';
+    ed.setAttribute('data-orig', ed.value);
+    ed.setAttribute('aria-label', td.getAttribute('title') || td.getAttribute('aria-label') || '');
+    td.tabIndex = -1;
+    td.textContent = '';
+    td.classList.add('editing');
+    td.appendChild(ed);
+    ed.focus();
+    if (ed.select && t !== 'select' && t !== 'date') { try { ed.select(); } catch (err) {} }
+    var sync = function () {
+      if (td.getAttribute('data-v') === ed.value) return;
+      td.setAttribute('data-v', ed.value);
+      changed(td);
+      var tr = td.closest('tr'); if (tr) tr.classList.add('dirty');
+      if (ed.tagName === 'SELECT') td.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    ed.addEventListener('input', sync);
+    ed.addEventListener('change', sync);
+    ed.addEventListener('blur', function () { close(td, false); });
+    if (ed.type === 'number') ed.addEventListener('wheel', function (e) { e.preventDefault(); }, { passive: false });   // the wheel scrolls, it does not change the value
+  }
+  function move(td, dir) {
+    var tr = td.closest('tr'), idx = Array.prototype.indexOf.call(tr.children, td), next = null;
+    var ok = function (c) { return c && c.classList.contains('lc') && !c.hasAttribute('data-ro') && c.offsetParent; };
+    if (dir === 'left' || dir === 'right') {
+      var c = dir === 'left' ? td.previousElementSibling : td.nextElementSibling;
+      while (c && !ok(c)) c = dir === 'left' ? c.previousElementSibling : c.nextElementSibling;
+      next = c;
+    } else {
+      var r = dir === 'up' ? tr.previousElementSibling : tr.nextElementSibling;
+      while (r && !ok(r.children[idx])) r = dir === 'up' ? r.previousElementSibling : r.nextElementSibling;
+      next = r ? r.children[idx] : null;
+    }
+    if (next) { next.scrollIntoView({ block: 'nearest', inline: 'nearest' }); open(next); }
+  }
+  grids.forEach(function (grid) {
+    grid.addEventListener('focusin', function (e) {
+      if (e.target.tagName !== 'TD' || !e.target.classList.contains('lc')) return;
+      if (e.target.hasAttribute('data-noopen')) { e.target.removeAttribute('data-noopen'); return; }   // back from Esc: the cell keeps the focus
+      open(e.target);
+    });
+    grid.addEventListener('mousedown', function (e) {
+      var td = e.target.closest('td.lc');
+      if (td && !td.classList.contains('editing') && !td.hasAttribute('data-ro')) { e.preventDefault(); open(td); }
+    });
+    grid.addEventListener('keydown', function (e) {
+      var el = e.target;
+      if (el.tagName === 'TD' && el.classList.contains('lc')) {
+        if (e.key === 'Enter' || e.key === 'F2') { e.preventDefault(); open(el); return; }
+        if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && type(el) !== 'select' && type(el) !== 'date' && (type(el) === 'text' || /^[0-9.]$/.test(e.key))) {
+          e.preventDefault(); open(el);
+          var ni = el.querySelector('input.lc-input');
+          if (ni) { ni.value = e.key === '.' ? '0.' : e.key; ni.dispatchEvent(new Event('input', { bubbles: true })); }
+        }
+        return;
+      }
+      if (!el.classList || !el.classList.contains('lc-input')) return;
+      var td = el.closest('td'), t = type(td), plain = t === 'number' || t === 'int' || t === 'text';
+      if (e.key === 'Enter') { e.preventDefault(); move(td, 'down'); }
+      else if (e.key === 'ArrowDown' && plain) { e.preventDefault(); move(td, 'down'); }
+      else if (e.key === 'ArrowUp' && plain) { e.preventDefault(); move(td, 'up'); }
+      else if (e.key === 'Escape') { e.preventDefault(); el.value = el.getAttribute('data-orig') || ''; close(td, true); td.setAttribute('data-noopen', '1'); td.focus(); }
+      else if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && plain && el.value === '') { e.preventDefault(); move(td, e.key === 'ArrowLeft' ? 'left' : 'right'); }
+    });
+  });
 })();
 
 /* v32: salary restriction picker (User Access & Permissions) */
