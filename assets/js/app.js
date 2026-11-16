@@ -196,7 +196,10 @@
   });
   $$('[data-check-all]').forEach(function (cb) {
     cb.addEventListener('change', function () {
-      $$('input[type=checkbox][name="' + cb.getAttribute('data-check-all') + '"]').forEach(function (x) {
+      // v35: only the boxes of its own form when that form has them (two lists on one page)
+      var sel = 'input[type=checkbox][name="' + cb.getAttribute('data-check-all') + '"]';
+      var scope = cb.form && cb.form.querySelector(sel) ? cb.form : document;
+      Array.prototype.forEach.call(scope.querySelectorAll(sel), function (x) {
         if (x.closest('tr') && x.closest('tr').style.display === 'none') return;
         x.checked = cb.checked;
       });
@@ -209,11 +212,71 @@
       var id = add.getAttribute('data-add-row');
       var tpl = document.getElementById(id + '-tpl');
       var body = document.getElementById(id);
-      if (tpl && body) body.appendChild(tpl.content.cloneNode(true));
+      if (tpl && body) {
+        // v35: data-max = most rows; __i__ in the template = a new row index (rows with nested field names)
+        var max = parseInt(body.getAttribute('data-max') || '0', 10);
+        if (max && body.querySelectorAll(':scope > tr, :scope > [data-row]').length >= max) { add.disabled = true; return; }
+        if (tpl.innerHTML.indexOf('__i__') >= 0) {
+          window.__rowSeq = (window.__rowSeq || 1000) + 1;
+          body.insertAdjacentHTML('beforeend', tpl.innerHTML.replace(/__i__/g, String(window.__rowSeq)));
+        } else {
+          body.appendChild(tpl.content.cloneNode(true));
+        }
+        if (max && body.querySelectorAll(':scope > tr, :scope > [data-row]').length >= max) add.disabled = true;
+        var last = body.lastElementChild, f1 = last && last.querySelector('input:not([type=hidden]), select, textarea');
+        if (f1) f1.focus();
+        body.dispatchEvent(new Event('input', { bubbles: true }));
+      }
     }
     var rm = e.target.closest('.remove-row');
-    if (rm) { e.preventDefault(); var tr = rm.closest('tr'); if (tr) tr.remove(); }
+    if (rm) {
+      e.preventDefault();
+      var tr = rm.closest('[data-row]') || rm.closest('tr');
+      if (tr) {
+        var tb = tr.parentNode;
+        tr.remove();
+        var addBtn = tb && tb.id ? document.querySelector('[data-add-row="' + tb.id + '"]') : null;
+        if (addBtn) addBtn.disabled = false;
+        if (tb) tb.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
   });
+
+  /* ------------------------------------------------------------ v35: Pass Slip Form Design — live preview */
+  (function () {
+    var form = document.querySelector('form[data-ps-design]');
+    var box = document.getElementById('psPreview');
+    if (!form || !box) return;
+    var timer = null, busy = false, again = false;
+    function fit() {
+      var sheet = box.querySelector('.ps-sheet');
+      if (!sheet) return;
+      sheet.style.transform = '';
+      box.style.height = '';
+      var avail = box.clientWidth - 28, w = sheet.offsetWidth;
+      var k = w > avail ? avail / w : 1;
+      sheet.style.transform = k < 1 ? 'scale(' + k.toFixed(4) + ')' : '';
+      sheet.style.marginLeft = k < 1 ? '0' : '';
+      var inner = box.querySelector('.psd-scale');
+      if (inner) inner.style.height = (sheet.offsetHeight * k) + 'px';
+    }
+    function refresh() {
+      if (busy) { again = true; return; }
+      busy = true;
+      var fd = new FormData(form);
+      fd.set('_action', 'preview');
+      fetch(form.getAttribute('action') || location.href, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+        .then(function (r) { return r.ok ? r.text() : Promise.reject(new Error('HTTP ' + r.status)); })
+        .then(function (html) { box.innerHTML = '<div class="psd-scale">' + html + '</div>'; fit(); })
+        .catch(function () { })
+        .then(function () { busy = false; if (again) { again = false; refresh(); } });
+    }
+    function later() { clearTimeout(timer); timer = setTimeout(refresh, 350); }
+    form.addEventListener('input', later);
+    form.addEventListener('change', later);
+    window.addEventListener('resize', function () { clearTimeout(fit.t); fit.t = setTimeout(fit, 120); });
+    fit();
+  })();
 
   /* ------------------------------------------------------------ number cells: select on focus, arrow navigation */
   document.addEventListener('focusin', function (e) {
@@ -1330,6 +1393,86 @@
   });
 })();
 
+/* v35: incremental searching on every filter form. A filter form (GET, class "filters") that filters employees,
+   companies / branches, departments or employee groups no longer needs Apply:
+   - typing in its search box (Find employee, Employee name ...) narrows the rows and lists below at once, and the
+     page refreshes with the server's answer after a short pause (the cursor stays in the box);
+   - choosing in a list (company, branch, department, group, status, period ...) applies at once; a multi-pick
+     applies when it is closed (Done, or a click outside).
+   Forms with data-live (their own live regions) keep their way; nothing is reloaded while a grid of the page has
+   unsaved changes (only the rows are narrowed). */
+(function () {
+  'use strict';
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var KEY = 'ihris.refocus';
+  var ENTITY = 'input[name=q], input[name=find], input[data-live-input], select[name=branch_id], select[name=company], select[name=org_unit_id], select[name=ou], '
+    + 'select[name=employee_group_id], select[name=employee_id], select[name=emp], select[name=emp_id], details[data-mpick]';
+  var match = window.ihrisMatch || function (hay, q) { return String(hay).toLowerCase().indexOf(String(q).toLowerCase()) !== -1; };
+  function dirtyPage() { return !!document.querySelector('form[data-dirty="1"], tr.dirty, .eb-lc.is-changed'); }
+  function route() { var m = location.search.match(/[?&]p=([^&]*)/); return m ? decodeURIComponent(m[1]) : ''; }
+  // give back the cursor to the search box after the page refreshed
+  try {
+    var back = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+    sessionStorage.removeItem(KEY);
+    if (back && back.p === route() && Date.now() - back.t < 20000) {
+      var el = document.querySelector('form.filters [name="' + back.name + '"]');
+      if (el) { el.focus(); try { var L = el.value.length; el.setSelectionRange(L, L); } catch (err) {} }
+    }
+  } catch (err) {}
+  $$('form.filters').forEach(function (form) {
+    if ((form.getAttribute('method') || 'get').toLowerCase() !== 'get' || form.hasAttribute('data-live') || form.hasAttribute('data-no-live')) return;
+    if (!form.querySelector(ENTITY)) return;
+    form.classList.add('is-live');
+    var timer = null;
+    var submit = function (focusName) {
+      if (dirtyPage()) return;   // unsaved changes on the page: Apply stays manual
+      try { if (focusName) sessionStorage.setItem(KEY, JSON.stringify({ p: route(), name: focusName, t: Date.now() })); } catch (err) {}
+      form.setAttribute('data-submitting', '1');
+      if (form.requestSubmit) form.requestSubmit(); else form.submit();
+    };
+    // what the search narrows at once: the tables and lists that follow the form on the page
+    var targets = function () {
+      var out = [], el = form.nextElementSibling;
+      while (el) { out.push(el); el = el.nextElementSibling; }
+      return out;
+    };
+    var narrow = function (q) {
+      targets().forEach(function (box) {
+        $$('tbody tr', box).forEach(function (tr) {
+          if (tr.children.length < 2 || tr.classList.contains('sub') || tr.classList.contains('grp') || tr.classList.contains('csvi-msg') || tr.querySelector('td[colspan]:only-child')) return;
+          tr.style.display = !q || match(tr.textContent + ' ' + (tr.getAttribute('data-search') || ''), q) ? '' : 'none';
+        });
+        $$('.list-nav a', box).forEach(function (a) { a.style.display = !q || match(a.textContent + ' ' + (a.getAttribute('data-search') || ''), q) ? '' : 'none'; });
+      });
+    };
+    form.addEventListener('input', function (e) {
+      var t = e.target;
+      if (!t.matches('input[name=q], input[name=find], input[data-live-input]')) return;
+      narrow(t.value.trim());
+      clearTimeout(timer);
+      var start = t.getAttribute('data-start');
+      if (start === null) { start = t.defaultValue || ''; t.setAttribute('data-start', start); }
+      timer = setTimeout(function () { if (t.value.trim() !== start.trim()) submit(t.name); }, 700);
+    });
+    form.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && e.target.matches('input[name=q], input[name=find]')) { e.preventDefault(); clearTimeout(timer); submit(e.target.name); }
+    });
+    form.addEventListener('change', function (e) {
+      var t = e.target;
+      if (t.matches('select') && !t.hasAttribute('data-autosubmit') && !t.multiple) { clearTimeout(timer); setTimeout(function () { submit(null); }, 40); }
+    });
+    // a multi-pick (company / branch, department, group) applies when it is closed with another choice
+    $$('details[data-mpick]', form).forEach(function (d) {
+      var snap = function () { return $$('input[type=checkbox]:checked', d).map(function (c) { return c.value; }).join(','); };
+      var before = snap();
+      d.addEventListener('toggle', function () {
+        if (d.open) { before = snap(); return; }
+        if (snap() !== before) { before = snap(); submit(null); }
+      });
+    });
+  });
+})();
+
 /* v32: salary restriction picker (User Access & Permissions) */
 (function () {
   'use strict';
@@ -1557,12 +1700,25 @@
   };
   window.ihrisMatch = function (hay, q) { return hits(hay, tokens(q)); };
 
-  var COMBO = 'select[data-combo], select[name=employee_id], select[name=emp], select[name=emp_id], select[name=supervisor_id], select[name=head_employee_id], select[name=evaluator_employee_id]';
+  var COMBO = 'select[data-combo], select[name=employee_id], select[name=emp], select[name=emp_id], select[name=supervisor_id], select[name=head_employee_id], select[name=evaluator_employee_id]'
+    // v35: the company, branch, department and employee group choices are searched as you type too
+    + ', select[name=branch_id], select[name=default_branch_id], select[name=company], select[name=company_code], select[name=org_unit_id], select[name=ou], select[name=unit_id], select[name=employee_group_id]';
+  // what a combo searches, for its messages
+  function nounOf(sel) {
+    var n = sel.getAttribute('data-combo-noun');
+    if (n) return n;
+    var nm = sel.name || '';
+    if (/branch|company/.test(nm)) return 'company / branch';
+    if (/org_unit|^ou$|unit_id/.test(nm)) return 'department';
+    if (/group/.test(nm)) return 'employee group';
+    return 'employee';
+  }
   var PICK = 'select[multiple][data-picklist], select[multiple][name="employee_ids[]"]';
 
   /* ------------------------------------------------------------ combobox (one employee) */
   function combo(sel) {
-    if (sel.multiple || sel.hasAttribute('data-no-combo') || sel.closest('.combo')) return;
+    if (sel.multiple || sel.hasAttribute('data-no-combo') || sel.closest('.combo') || sel.closest('.lite-grid') || sel.hasAttribute('data-qr')) return;
+    var noun = nounOf(sel);
     var wrap = document.createElement('div');
     wrap.className = 'combo';
     var inp = document.createElement('input');
@@ -1571,7 +1727,7 @@
     inp.setAttribute('autocomplete', 'off');
     inp.setAttribute('role', 'combobox');
     inp.setAttribute('aria-expanded', 'false');
-    inp.setAttribute('aria-label', sel.getAttribute('aria-label') || 'Search an employee');
+    inp.setAttribute('aria-label', sel.getAttribute('aria-label') || 'Search ' + noun);
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'combo-toggle';
@@ -1594,7 +1750,7 @@
     var showValue = function () {
       var o = current();
       var empty = sel.querySelector('option[value=""]');
-      inp.placeholder = empty ? empty.text : 'Type a name or employee no.';
+      inp.placeholder = empty ? empty.text : (noun === 'employee' ? 'Type a name or employee no.' : 'Type to search');
       inp.value = o && o.value !== '' ? o.text : '';
       inp.disabled = sel.disabled;
       wrap.classList.toggle('is-disabled', sel.disabled);
@@ -1611,7 +1767,7 @@
         shown.push(i);
         html += '<div class="combo-opt' + (o.value === '' ? ' is-empty' : '') + (i === sel.selectedIndex ? ' is-sel' : '') + '" role="option" data-i="' + i + '">' + esc(o.text) + '</div>';
       });
-      if (!shown.length) html = '<div class="combo-none">No employee matches "' + esc(q) + '"</div>';
+      if (!shown.length) html = '<div class="combo-none">No ' + esc(noun) + ' matches "' + esc(q) + '"</div>';
       if (more) html += '<div class="combo-none">' + more + ' more, keep typing to narrow the list</div>';
       list.innerHTML = html;
       active = -1;
@@ -1871,7 +2027,7 @@
     };
     form.addEventListener('input', function (e) {
       var t = e.target;
-      if (!(t.matches('input[type=search], input[data-live-input]'))) return;
+      if (!(t.matches('input[type=search], input[data-live-input]')) || t.classList.contains('mpick-find')) return;   // v35: not the Find of a multi-pick
       quick(t.value);
       clearTimeout(timer);
       timer = setTimeout(refresh, 280);

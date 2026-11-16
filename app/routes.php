@@ -48,6 +48,8 @@ return [
     'company_events'     => ['pis/company_events.php', 'company_events'],
     'my_leaves'          => ['ess/leaves.php', 'my_leaves'],
     'my_overtime'        => ['ess/overtime.php', 'my_overtime'],
+    'my_pass_slips'      => ['ess/pass_slips.php', 'my_pass_slips'],       // v35
+    'pass_slip_print'    => ['ams/pass_slip_print.php', 'auth'],           // v35: own, approver or Pass Slips (checked on the page)
     'my_payslips'        => ['ess/payslips.php', 'my_payslips'],
     'my_evaluations'     => ['ess/evaluations.php', 'my_evaluations'],
     'my_ledgers'         => ['ess/ledgers.php', 'my_ledgers'],
@@ -105,6 +107,8 @@ return [
     'import_review'      => ['ams/import_review.php', 'import_review'],
     'web_verify'         => ['ams/web_verify.php', 'web_verify'],
     'ot_requests'        => ['ams/ot_requests.php', 'ot_requests'],
+    'pass_slips'         => ['ams/pass_slips.php', 'pass_slips'],          // v35
+    'pass_slip_design'   => ['ams/pass_slip_design.php', 'pass_slip_design'],   // v35
     'shifts'             => ['ams/shifts.php', 'shifts'],
     'schedules'          => ['ams/schedules.php', 'schedules'],
     'holidays'           => ['ams/holidays.php', 'holidays'],

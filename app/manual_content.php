@@ -554,7 +554,40 @@ return [
     'If your employee record has no immediate supervisor, or that supervisor has no email address, the request is still saved but nobody is notified. Follow it up in person.',
     'Asking for authorization after the fact still works. HR can also authorize overtime directly on the daily time record.',
 ],
-'related' => ['ot_requests', 'approvals', 'dtr_edit'],
+'related' => ['ot_requests', 'approvals', 'dtr_edit', 'my_pass_slips'],
+],
+
+[
+'slug' => 'my_pass_slips',
+'section' => 'ess',
+'title' => 'Pass Slip (Forgot to Swipe/Log)',
+'summary' => 'File the time in or time out you forgot to log; once your immediate superior approves it, the time is posted to your daily time record.',
+'roles' => 'all',
+'menu' => 'My Workspace > Pass Slip (Forgot to Swipe/Log)',
+'keywords' => 'pass slip forgot to swipe forgot to log missing punch time in time out form print approval superior',
+'purpose' => 'The PASS SLIP FORM (Forgot to Swipe/Log) on screen. It goes through approval like a leave or an overtime request, and it can be printed on the company form whenever a signed copy is needed.',
+'steps' => [
+    'Enter the date and only the time(s) you did not log, in the columns of the form (for example Morning Time In or Afternoon Time Out).',
+    'Press Add another date to put more days on the same slip, up to the number set in the form design.',
+    'Write the reason and press Submit for approval. Your immediate superior is emailed and decides in Pending Approvals.',
+    'Follow the slip in My pass slips. Press Print to print or save the form as PDF; Print blank form gives a form filled in with your name only.',
+    'A pending slip can be cancelled with Cancel.',
+],
+'fields' => [
+    ['Date', 'The day of the missing log: today or an earlier day, never a future date.'],
+    ['Time columns', 'The columns of the form, each one posting its own log type (time in, break out, break in or time out). Leave a column blank when that log is not missing.'],
+    ['Reason', 'Required: why the time was not logged.'],
+],
+'rules' => [
+    'A date cannot be on two slips that are pending or approved.',
+    'A date whose attendance is already closed cannot be filed.',
+    'When the slip is approved, every time is posted as a manual log marked PASS SLIP and the number, and that day is recomputed. A time out earlier than the time in of the same date is read as the next day (night shift).',
+    'A rejected slip posts nothing; the approver\'s remarks are shown under the status.',
+],
+'tips' => [
+    'If your employee record has no immediate superior, HR sees and decides the slip.',
+],
+'related' => ['pass_slips', 'approvals', 'my_dtr', 'pass_slip_design'],
 ],
 
 [
@@ -718,7 +751,7 @@ return [
 'slug' => 'approvals',
 'section' => 'ess',
 'title' => 'Pending Approvals',
-'summary' => 'One inbox for the leave requests routed to you and the overtime requests of your team.',
+'summary' => 'One inbox for the leave requests routed to you and the overtime requests and pass slips of your team.',
 'roles' => ['hr', 'supervisor'],
 'menu' => 'Approvals > Pending Approvals',
 'keywords' => 'approvals approve return disallow leave overtime supervisor inbox pending decide',
@@ -727,6 +760,7 @@ return [
     'Read the leave request box: the employee, the type, the dates, the number of days and the remaining balance, with the reason underneath.',
     'Choose Approve, Return for revision or Disallow, write remarks and press Submit.',
     'For overtime, tick the requests and press Approve selected or Reject selected.',
+    'For pass slips (forgot to swipe / log), tick them and press Approve selected or Reject selected; View opens the printed form.',
     'The card Loan / deduction requests shows how many requests wait for you; Open Loan / Deduction Approvals to decide them.',
 ],
 'fields' => [
@@ -740,11 +774,12 @@ return [
     'HR sees every step whose approver role is HR.',
     'Approving the last step grants the leave, consumes the balance, rewrites the daily time records for those dates so they are not read as absences, and emails the employee.',
     'Approving overtime for a date that has already passed rebuilds that daily time record at once, so the authorized hours take effect.',
+    'Approving a pass slip posts its times as manual logs and recomputes those days.',
 ],
 'tips' => [
     'A step that belongs to somebody else is shown without a decision form, so you can see the position of a request without being able to act on it.',
 ],
-'related' => ['leave_view', 'leave_action', 'ot_requests', 'my_leaves'],
+'related' => ['leave_view', 'leave_action', 'ot_requests', 'my_leaves', 'pass_slips'],
 ],
 [
 'slug' => 'loan_approvals',
@@ -1936,6 +1971,7 @@ return [
 'purpose' => 'Where HR looks at a photo and a map pin and decides whether a web punch is genuine. Check-ins inside the geofence with a detected face are accepted automatically and never appear here.',
 'steps' => [
     'The screen opens on the punches pending verification. Use Show to look at the accepted, verified or rejected ones.',
+    'Type a name, employee no. or biometric ID in Employee: the list follows as you type.',
     'Compare the selfie with the 201 photo shown next to it, and read the distance from the site on the map link.',
     'Tick the rows, write a note and press Verify selected or Reject selected.',
 ],
@@ -1964,6 +2000,7 @@ return [
 'steps' => [
     'Press Authorize overtime to pre-approve. Pick one or several employees, the date, the hours and the reason.',
     'To act on requests, filter to Pending, tick the rows, write remarks and press Approve selected or Reject selected.',
+    'Type a name, employee no. or biometric ID in Employee to find someone\'s requests: the list follows as you type.',
     'The Logged OT column shows what the punches actually produced that day, so an authorization can be compared with reality.',
 ],
 'rules' => [
@@ -1976,6 +2013,56 @@ return [
     'Authorizing for a future date shows nothing until that day is processed. The Logged OT column stays empty until then.',
 ],
 'related' => ['my_overtime', 'approvals', 'dtr_edit', 'ams_policies'],
+],
+
+[
+'slug' => 'pass_slips',
+'section' => 'ams',
+'title' => 'Pass Slips (Forgot to Swipe/Log)',
+'summary' => 'Every pass slip filed by the employees: approve or reject them, and print any slip on the company form.',
+'route' => 'pass_slips',
+'roles' => ['hr', 'supervisor'],
+'menu' => 'Attendance (AMS) > Pass Slips (Forgot to Swipe/Log)',
+'keywords' => 'pass slip forgot to swipe forgot to log missing punch approve reject print manual log',
+'purpose' => 'HR\'s list of the pass slips. The immediate superior normally decides them in Pending Approvals; this screen shows all of them with their status and the logs that were posted.',
+'steps' => [
+    'Filter by status and dates, and type a name, employee no. or slip no. in Employee: the list follows as you type.',
+    'Tick the pending slips, write remarks if needed and press Approve selected or Reject selected.',
+    'Press Print on a row to print the slip or save it as PDF. Print blank form gives an empty form.',
+],
+'rules' => [
+    'HR (users who may authorize overtime in the DTR or resolve attendance exceptions) sees every employee of their assignment; a superior sees only his team.',
+    'Nobody approves his own slip.',
+    'Approving posts each time as a manual log (PASS SLIP and the number) and recomputes the day. A log already there or a closed day is skipped and named in the message.',
+],
+'related' => ['my_pass_slips', 'approvals', 'att_logs', 'pass_slip_design'],
+],
+
+[
+'slug' => 'pass_slip_design',
+'section' => 'ams',
+'title' => 'Pass Slip Form Design',
+'summary' => 'Customize the printed PASS SLIP FORM: text, margins, logos, rows and columns.',
+'route' => 'pass_slip_design',
+'roles' => ['hr'],
+'menu' => 'Attendance (AMS) > Pass Slip Form Design',
+'keywords' => 'pass slip form design layout logo margin header company name address telephone form number title columns rows signatories footer print',
+'purpose' => 'Makes the printed form look like the company\'s own form. Every change shows at once in the preview on the right (Sample slip or Blank form).',
+'steps' => [
+    'Paper and margins: paper size, orientation, the four margins in millimetres, the font and its size.',
+    'Logos: left and right, each the company logo, an uploaded image or none, with its height.',
+    'Header text: the company name, address, telephone numbers and any other line, with size, bold and italic. {company_name}, {company_address} and {branch_name} are filled from the employee\'s company.',
+    'Form number and form name: the form number ({no} = the slip number, e.g. HRPSF-{no}) and the title.',
+    'Employee fields: the labels and what each shows (name, position, department, I.D. no., date filed ...), on the left, the right or the full width.',
+    'Rows and columns: the date label, the most dates per slip, the rows of a blank form, the row height and the time columns with their group (e.g. MORNING) and log type.',
+    'Reason, signatories (label, caption, name printed, row and column, Note) and footer.',
+    'Press Save design. Restore original layout brings back the sample form.',
+],
+'rules' => [
+    'The log type of a column is the punch posted when a slip is approved. Removing a column does not change slips already approved.',
+    'Columns with the same group are printed under one heading.',
+],
+'related' => ['my_pass_slips', 'pass_slips'],
 ],
 
 [
@@ -2123,7 +2210,7 @@ return [
 'keywords' => 'exception missing punch unauthorized overtime geofence unverified no schedule leave conflict resolve tardiness monitor nte',
 'purpose' => 'Exceptions are the safety net. Anything ambiguous is flagged here rather than being paid or withheld quietly, and the period cannot be approved until each one is settled.',
 'steps' => [
-    'Filter by cutoff and by exception type.',
+    'Filter by cutoff and by exception type, and type a name, employee no. or biometric ID in Employee: the list follows as you type.',
     'Press Review on a row to open that day, or Verify for a web check-in issue.',
     'To accept several at once, tick them, write a resolution note and press Resolve selected.',
     'Scroll to the tardiness monitor and choose a month to see who is habitually late.',

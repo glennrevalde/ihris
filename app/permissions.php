@@ -61,6 +61,8 @@ function perm_defs(): array
         'my_calendar' => ['a' => 'view', 'def' => '*'],   // v17: schedule, leaves, overtime, holidays, company events
         'my_leaves' => ['a' => 'view create', 'def' => '*', 'ops' => ['file' => 'create', '' => 'create']],
         'my_overtime' => ['a' => 'view create', 'def' => '*', 'ops' => ['' => 'create']],
+        // v35: Pass Slip Form (Forgot to Swipe / Log): the employee files it, the immediate superior approves it
+        'my_pass_slips' => ['a' => 'view create print', 'def' => '*', 'ops' => ['file' => 'create', 'cancel' => 'create', '' => 'create']],
         'my_payslips' => ['a' => 'view print', 'def' => '*'],
         'my_evaluations' => ['a' => 'view edit', 'def' => '*', 'ops' => ['' => 'edit']],
         'my_ledgers' => ['a' => 'view', 'def' => '*'],
@@ -125,6 +127,8 @@ function perm_defs(): array
         'import_review' => ['a' => 'view approve reject', 'def' => 'hr', 'ops' => ['post' => 'approve']],
         'web_verify' => ['a' => 'view approve reject', 'def' => 'hr', 'ops' => ['verify' => 'approve']],
         'ot_requests' => ['a' => 'view create approve reject', 'def' => 'hr supervisor'],
+        'pass_slips' => ['a' => 'view approve reject print', 'def' => 'hr supervisor', 'ops' => ['decide' => 'approve']],
+        'pass_slip_design' => ['a' => 'view configure', 'def' => 'hr', 'ops' => ['save' => 'configure', 'reset' => 'configure', 'preview' => 'view']],
         'ams_policies' => ['a' => 'view configure', 'def' => 'hr', 'ops' => ['' => 'configure']],
         // Payroll System (PAY)
         'periods' => ['a' => 'view create edit delete generate approve', 'def' => 'hr payroll',
@@ -632,7 +636,7 @@ function perm_post_action(string $route, string $page, array $get, array $post):
     if (isset($ops[$a]) && $a !== '') {
         return $ops[$a];
     }
-    if (isset($post['decision']) && in_array($a, ['', 'leave', 'ot', 'decide'], true)) {
+    if (isset($post['decision']) && in_array($a, ['', 'leave', 'ot', 'decide', 'pass'], true)) {
         return in_array(strtolower((string)$post['decision']), ['reject', 'disallow', 'return', 'returned', 'rejected'], true) ? 'reject' : 'approve';
     }
     if ($a !== '') {

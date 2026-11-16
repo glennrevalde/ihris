@@ -37,7 +37,7 @@ If the database can't be reached or hasn't been imported yet, `index.php` shows 
 
 Copy the updated files over the old ones and open the site. `index.php` checks the `db_version`
 setting and applies every missing database change itself (new tables, new columns, new settings),
-so nothing has to be imported by hand. The current database version is **20**. Every company database
+so nothing has to be imported by hand. The current database version is **28**. Every company database
 (see section 12) upgrades itself the same way the first time it is opened.
 
 If you would rather run the SQL yourself (or the web user has no `ALTER`/`CREATE` rights), select
@@ -110,6 +110,7 @@ your HRIS database (for example `hris_web`) in phpMyAdmin and import, in order, 
 * `database/upgrade_to_v25_mysql55.sql` — Salary restriction: the table `user_salary_exclusions` (per user, the employees whose pay the user may not see).
 * `database/upgrade_to_v27_mysql55.sql` — Per Count benefits (`benefit_types.given_at` *count*, `count_field`) and the Per Count deduction computation (`deduction_types.computation` *per_count*).
 * `database/upgrade_to_v26_mysql55.sql` — longer company / branch codes (`branches.code` 40, `company_code`, `branch_code`, `init_code` 20; `log_staging.co_code`, `branch_code` 20).
+* `database/upgrade_to_v28_mysql55.sql` — Pass Slip Form (Forgot to Swipe / Log): the tables `pass_slips` (the slips filed by the employees) and `form_layouts` (the customizable layout of the printed form).
 
 The scripts are written for MySQL 5.5 (no `ADD COLUMN IF NOT EXISTS`; a small stored procedure
 checks `information_schema` first), are safe to run more than once and never touch existing rows
@@ -205,6 +206,19 @@ Demo data covers **August–September 2026**: August has approved cutoffs and fi
 | Duplicate logs | `# of minutes between LOGS w/ same TYPE as INVALID` again drops only a repeat of the same log type (or of two untyped punches), so a short 15-minute break is always kept. |
 | Multi-location hours listed by Co. / Branch | Payroll Batch Transaction and Attendance Batch Transaction Entry: choosing a company / branch lists its employees **and** everyone whose multi-location entry has hours there. Their row shows only the hours of that branch (*Part of a multi-location transaction*); saving it changes that location and the total becomes the sum of the locations again. All companies lists every transaction whole. |
 | Payroll Register and payslips by branch | Payroll Batch Register → Co. / Branch: the employees of the branch plus the multi-location employees who worked there, each with only the pay earned in that branch, its share of the employer contributions and the deductions when it is the deduction source (*Branch part*). The branch totals of all branches add up to the *All* register. **Branch payslip** opens the payslip on that branch's tab. Print Payslips with a company / branch prints the branch payslip of those employees; with All, one consolidated payslip each (or split). Print and CSV export follow the same filter. |
+
+### Additions in version 35: incremental searching everywhere and the Pass Slip Form (Forgot to Swipe/Log)
+
+Database version 28: open the site once (it upgrades by itself) or import `database/upgrade_to_v28_mysql55.sql` (MySQL 5.5, safe to run more than once; it adds the tables `pass_slips` and `form_layouts`). The stylesheet loads as `app.css?v=42`, the script as `app.js?v=39`, the PDF script as `pdf.js?v=33`.
+
+| Request | Where in the app |
+|---|---|
+| Incremental searching on the filters (Employee Leave Entry, Masterfile Batch Edit, Employee Masterfile, Employee Shift Entry, Batch Shift Define, Process Attendance, Attendance Entry, Auto-Generate, Attendance Summary Entry, Transaction Payment ...) | Every filter form that filters employees, companies / branches, departments or employee groups now works without Apply: typing in Find employee / Employee narrows the rows at once and the page refreshes with the result after a short pause (the cursor stays in the box, Enter refreshes at once); choosing a company, branch, department, group, status or period applies at once; a multi-pick list applies when it is closed. Nothing is reloaded while a grid has unsaved changes. |
+| Every Employee, Company / Branch, Department and Employee Group list of the Payroll System (and the rest of the system) searchable | The drop-down lists of employees, companies / branches, departments and employee groups are type-to-search lists (type part of the name or code, arrow keys and Enter to pick); the multi-pick lists (Co. / Branch, Department, Employee group ...) always have a Find box. |
+| Employee name filter in Web Check-in Verification, Overtime Authorizations and Attendance Exceptions | A new **Employee** box (name, employee no. or biometric ID) on each filter, searched as you type; the filter is kept after approving / verifying / resolving. |
+| PASS SLIP FORM (Forgot to Swipe/Log) in My Workspace, approved by the immediate superior like a leave or an overtime request | My Workspace → **Pass Slip (Forgot to Swipe/Log)**: the employee enters the date(s) and only the missing time(s) in the columns of the form, with the reason, and submits; the immediate superior is emailed and decides in Approvals → Pending Approvals (HR sees every employee in Attendance → **Pass Slips (Forgot to Swipe/Log)**). Approval posts each time to the raw logs as a manual log *PASS SLIP &lt;no&gt;* and recomputes the day (a closed day or a log already there is skipped); the employee is emailed the decision. A pending slip can be cancelled. Any slip, or a blank form, can be printed or saved as PDF. |
+| The form fully customizable as to Text, Margins and Logos, columns and rows | Attendance → **Pass Slip Form Design**: paper and orientation, the four margins (mm), font and size; left and right logo (company logo, uploaded image or none, with height); the header lines (company name, address, telephone numbers, any text, size / bold / italic, {company_name} {company_address} {branch_name}); the form number (e.g. HRPSF-{no}, {no} = year + running number, 26089) and the form name; the employee fields (Employee, Position, Department, Date Filed, I.D No. ... and their side); the rows (date label and format, most dates per slip, rows on a blank form, row height) and the columns (group such as MORNING / AFTERNOON, column name such as TIME IN, and the log type each one posts); reason, signatories (Requested by, Approved by, Manager, CEO, CFO, Received by ... by row and column, with Note) and footer. A live preview follows every change; Restore original layout brings back the sample form. |
+| Pass slips in the role permissions | System → Roles: *Pass Slip (Forgot to Swipe/Log)* under My Workspace (View, Create, Print; every role), *Pass Slips* (View, Approve, Reject, Print; HR and Supervisor) and *Pass Slip Form Design* (View, Configure; HR). |
 
 ### Fix after version 34 (2): the other large grids no longer hang either
 

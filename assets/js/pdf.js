@@ -48,6 +48,9 @@
 
   function paperOf(btn, root) {
     var want = btn.getAttribute('data-pdf-size');
+    // v35: a paper given in millimetres, "215.9x279.4" (customizable forms)
+    var mm = want && /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$/.exec(want);
+    if (mm) { return [parseFloat(mm[1]), parseFloat(mm[2])]; }
     if (!want) {
       want = root.classList.contains('legal-landscape') ? 'legal-landscape' : (root.classList.contains('landscape') ? 'landscape' : 'a4');
     }
@@ -171,7 +174,10 @@
     try {
       await libs();
       var paper = paperOf(btn, root);
-      var cw = paper[0] - MARGIN * 2, ch = paper[1] - MARGIN * 2;   // printable area in mm
+      // v35: data-pdf-margin="0" when the document draws its own margins (customizable forms)
+      var mAttr = btn.getAttribute('data-pdf-margin');
+      var margin = mAttr !== null && mAttr !== '' && !isNaN(parseFloat(mAttr)) ? parseFloat(mAttr) : MARGIN;
+      var cw = paper[0] - margin * 2, ch = paper[1] - margin * 2;   // printable area in mm
       var widthPx = Math.round(cw * MM);
       frame = await buildFrame(root, widthPx);
       var d = frame.contentDocument;
@@ -223,7 +229,7 @@
           g.fillRect(0, 0, pc.width, pc.height);
           g.drawImage(canvas, 0, Math.round(a * scale), canvas.width, hPx, 0, 0, pc.width, hPx);
           if (page > 0) { pdf.addPage([paper[0], paper[1]], paper[0] > paper[1] ? 'landscape' : 'portrait'); }
-          pdf.addImage(pc.toDataURL('image/jpeg', 0.92), 'JPEG', MARGIN, MARGIN, cw, (b - a) / pxmm, undefined, 'FAST');
+          pdf.addImage(pc.toDataURL('image/jpeg', 0.92), 'JPEG', margin, margin, cw, (b - a) / pxmm, undefined, 'FAST');
           page++;
         }
         i = j;

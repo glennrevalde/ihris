@@ -36,6 +36,11 @@ if ($xf['employee_group_id']) {
 if ($units = org_units_with_descendants($xf['org_unit_id'] ?: null)) {
     $empWhere[] = sql_in('e.org_unit_id', $units);
 }
+// v35: employee name filter (name, employee no. or biometric ID), searched as you type
+$xf['q'] = trim((string)get('q', ''));
+if ($xf['q'] !== '') {
+    $empWhere[] = search_words_sql(['e.last_name', 'e.first_name', 'e.employee_no', 'e.biometric_id'], $xf['q'], $empParams);
+}
 $empSql = $empWhere ? ' AND ' . implode(' AND ', $empWhere) : '';
 $where = ["d.exception_status = 'open'"];
 $params = [];
@@ -65,7 +70,7 @@ $tardy = rows("SELECT e.id, e.first_name, e.last_name, e.middle_name, e.suffix, 
                WHERE d.work_date BETWEEN ? AND ? AND d.status = 'present' AND d.day_type = 'ordinary' AND d.late_minutes > ?" . $empSql . user_scope_sql('e') . "
                GROUP BY e.id, e.first_name, e.last_name, e.middle_name, e.suffix, e.employee_no ORDER BY cnt DESC, mins DESC", array_merge([$mStart, $mEnd, $grace], $empParams));
 $companies = pairs("SELECT DISTINCT COALESCE(NULLIF(company_code, ''), company_name, name) AS k, COALESCE(NULLIF(company_name, ''), name) FROM branches WHERE is_active = 1 ORDER BY 2");
-$keepX = array_filter(['cutoff_id' => $cutId, 'type' => $type, 'company' => $xf['company'], 'branch_id' => $xf['branch_id'], 'employee_group_id' => $xf['employee_group_id'],
+$keepX = array_filter(['cutoff_id' => $cutId, 'type' => $type, 'q' => $xf['q'], 'company' => $xf['company'], 'branch_id' => $xf['branch_id'], 'employee_group_id' => $xf['employee_group_id'],
     'org_unit_id' => $xf['org_unit_id']], fn($v) => $v !== '' && $v !== []);
 page_header('Attendance Exceptions', ['subtitle' => 'Flagged for HR resolution before the cutoff is finalized — never silently paid or silently withheld.']);
 ?>
@@ -76,6 +81,7 @@ page_header('Attendance Exceptions', ['subtitle' => 'Flagged for HR resolution b
   <?= multi_pick('branch_id', 'Branch', pairs("SELECT id, CONCAT(COALESCE(branch_code, code), ' — ', name) FROM branches WHERE is_active = 1 ORDER BY company_code, branch_code, code"), $xf['branch_id'], 'All branches') ?>
   <?= multi_pick('employee_group_id', 'Employee Group', emp_group_options(), $xf['employee_group_id'], 'All groups') ?>
   <?= multi_pick('org_unit_id', 'Department', org_unit_options(), $xf['org_unit_id'], 'All departments') ?>
+  <label class="grow">Employee<input type="search" name="q" value="<?= h($xf['q']) ?>" placeholder="Type a name, employee no. or biometric ID" autocomplete="off"></label>
   <input type="hidden" name="month" value="<?= h($month) ?>">
   <button class="btn btn-primary">Filter</button>
   <?php if ($keepX): ?><a class="btn" href="<?= url('att_exceptions', ['month' => $month]) ?>">Clear</a><?php endif; ?>

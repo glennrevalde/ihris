@@ -37,20 +37,28 @@ if (is_post()) {
         }
         flash('success', 'Overtime request(s) updated; affected DTRs recomputed.');
     }
-    redirect('ot_requests');
+    redirect('ot_requests', array_filter(['status' => get('status') ?: null, 'q' => trim((string)get('q', '')) ?: null]));
 }
 $status = get('status', 'pending');
 $where = $status !== 'all' ? 'o.status = ' . db()->quote($status) : '1=1';
+// v35: employee name filter (name, employee no. or biometric ID), searched as you type
+$qText = trim((string)get('q', ''));
+$qParams = [];
+if ($qText !== '') {
+    $where .= ' AND ' . search_words_sql(['e.last_name', 'e.first_name', 'e.employee_no', 'e.biometric_id'], $qText, $qParams);
+}
 if ($team !== null) {
     $where .= ' AND o.employee_id IN (' . ($team ? implode(',', $team) : '0') . ')';
 }
 $list = rows("SELECT o.*, e.first_name, e.last_name, e.middle_name, e.suffix, e.employee_no, u.username AS approver,
               (SELECT ot_minutes FROM dtr d WHERE d.employee_id = o.employee_id AND d.work_date = o.ot_date) AS logged
-              FROM overtime_requests o JOIN employees e ON e.id = o.employee_id LEFT JOIN users u ON u.id = o.approved_by WHERE $where" . ($team === null ? user_scope_sql('e') : '') . " ORDER BY o.ot_date DESC LIMIT 500");
+              FROM overtime_requests o JOIN employees e ON e.id = o.employee_id LEFT JOIN users u ON u.id = o.approved_by WHERE $where" . ($team === null ? user_scope_sql('e') : '') . " ORDER BY o.ot_date DESC LIMIT 500", $qParams);
 $empOpts = $team === null ? employee_options() : ($team ? employee_options(true, 'id IN (' . implode(',', $team) . ')', [], false) : []);
 page_header('Overtime Authorizations', ['subtitle' => 'Pre-approve overtime, or act on employees\' OT requests. Unauthorized overtime is flagged in the DTR and payroll.', 'actions' => '<button class="btn btn-primary" data-modal-open="otModal">+ Authorize overtime</button>']);
 ?>
-<form class="card filters" method="get"><input type="hidden" name="p" value="ot_requests"><label>Status<select name="status" data-autosubmit><?= options(['pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected', 'all' => 'All'], $status) ?></select></label></form>
+<form class="card filters" method="get"><input type="hidden" name="p" value="ot_requests"><label>Status<select name="status" data-autosubmit><?= options(['pending' => 'Pending', 'approved' => 'Approved', 'rejected' => 'Rejected', 'all' => 'All'], $status) ?></select></label>
+  <label class="grow">Employee<input type="search" name="q" value="<?= h($qText) ?>" placeholder="Type a name, employee no. or biometric ID" autocomplete="off"></label>
+  <button class="btn btn-primary">Apply</button></form>
 <form method="post" class="card"><?= csrf_field() ?>
   <div class="card-head"><h2><?= count($list) ?> request(s)</h2><div><input name="remarks" placeholder="Remarks" style="width:200px;display:inline-block"> <button class="btn btn-success" name="_action" value="approve">Approve selected</button> <button class="btn btn-danger-outline" name="_action" value="reject">Reject selected</button></div></div>
   <table class="table compact"><thead><tr><th><input type="checkbox" data-check-all="ids[]"></th><th>Date</th><th>Employee</th><th class="num">Hours requested</th><th class="num">Logged OT</th><th>Reason</th><th>Status</th><th>By</th></tr></thead><tbody>

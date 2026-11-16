@@ -4,6 +4,11 @@
  */
 declare(strict_types=1);
 
+// Servers hardened against executable memory (SELinux, some PHP-FPM pools) cannot give PCRE its JIT memory: every
+// preg_* call would then print "Allocation of JIT memory failed, PCRE JIT will be disabled". Without JIT the regular
+// expressions work the same, only without that speed-up, so it is switched off before the first one runs.
+@ini_set('pcre.jit', '0');
+
 define('APP_ROOT', dirname(__DIR__));
 define('UPLOAD_DIR', APP_ROOT . '/uploads');
 
@@ -74,7 +79,8 @@ require_once __DIR__ . '/engine/nte.php';
 require_once __DIR__ . '/engine/calendar.php';
 require_once __DIR__ . '/engine/loanreq.php';   // v20: Employee Loan / Deduction Request
 require_once __DIR__ . '/engine/pwreset.php';   // v21: password resets by the Super Admin
-require_once __DIR__ . '/engine/xlsgrid.php';   // v22: Excel attendance reports (JJM Logs) for the log import
+require_once __DIR__ . '/engine/xlsgrid.php';
+require_once __DIR__ . '/engine/passslip.php';   // v35: Pass Slip Form (Forgot to Swipe / Log)   // v22: Excel attendance reports (JJM Logs) for the log import
 require_once __DIR__ . '/engine/payslip.php';
 require_once __DIR__ . '/engine/register.php';
 require_once __DIR__ . '/engine/payreports.php';

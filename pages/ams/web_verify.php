@@ -17,16 +17,22 @@ if (is_post()) {
     }
     audit('ams', 'web_checkin_' . $status, 'attendance_logs', null, ['ids' => $ids, 'reason' => post('reason')]);
     flash('success', count($ids) . ' check-in(s) ' . $status . '. Affected DTRs were recomputed' . ($status === 'rejected' ? ' (rejected punches are ignored).' : '.'));
-    redirect('web_verify', ['status' => get('status', 'pending')]);
+    redirect('web_verify', array_filter(['status' => get('status', 'pending'), 'q' => trim((string)get('q', '')) ?: null]));
 }
 $status = get('status', 'pending');
+// v35: employee name filter (name, employee no. or biometric ID), searched as you type
+$qText = trim((string)get('q', ''));
+$qParams = [];
+$qSql = $qText !== '' ? ' AND ' . search_words_sql(['e.last_name', 'e.first_name', 'e.employee_no', 'e.biometric_id'], $qText, $qParams) : '';
 $list = rows("SELECT l.*, e.first_name, e.last_name, e.middle_name, e.suffix, e.employee_no, e.photo_path AS emp_photo, b.name AS branch_name, b.geofence_radius_m
               FROM attendance_logs l JOIN employees e ON e.id = l.employee_id LEFT JOIN branches b ON b.id = l.branch_id
-              WHERE l.source = 'web'" . ($status !== 'all' ? ' AND l.verify_status = ' . db()->quote($status) : '') . user_scope_sql('e') . ' ORDER BY l.log_time DESC LIMIT 300');
+              WHERE l.source = 'web'" . ($status !== 'all' ? ' AND l.verify_status = ' . db()->quote($status) : '') . $qSql . user_scope_sql('e') . ' ORDER BY l.log_time DESC LIMIT 300', $qParams);
 page_header('Web Check-in Verification', ['subtitle' => 'Web/mobile time capture with GPS geofencing and live facial capture. Check-ins outside the authorized radius, or without a detected face, wait here for HR verification.']);
 ?>
 <form class="card filters" method="get"><input type="hidden" name="p" value="web_verify">
-  <label>Show<select name="status" data-autosubmit><?= options(['pending' => 'Pending verification', 'auto' => 'Auto-accepted (inside geofence)', 'verified' => 'Verified by HR', 'rejected' => 'Rejected', 'all' => 'All'], $status) ?></select></label></form>
+  <label>Show<select name="status" data-autosubmit><?= options(['pending' => 'Pending verification', 'auto' => 'Auto-accepted (inside geofence)', 'verified' => 'Verified by HR', 'rejected' => 'Rejected', 'all' => 'All'], $status) ?></select></label>
+  <label class="grow">Employee<input type="search" name="q" value="<?= h($qText) ?>" placeholder="Type a name, employee no. or biometric ID" autocomplete="off"></label>
+  <button class="btn btn-primary">Apply</button></form>
 <form method="post" class="card"><?= csrf_field() ?>
   <div class="card-head"><h2><?= count($list) ?> check-in(s)</h2>
     <div><input name="reason" placeholder="Note / reason" style="width:220px;display:inline-block"> <button class="btn btn-success" name="_action" value="verify">Verify selected</button> <button class="btn btn-danger-outline" name="_action" value="reject" data-confirm="Reject the selected check-ins? Rejected punches are excluded from the DTR.">Reject selected</button></div></div>

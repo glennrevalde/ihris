@@ -615,7 +615,7 @@ function multi_pick(string $name, string $caption, array $options, $selected, st
     $chosen = array_values(array_filter(array_map('strval', array_keys($options)), fn($k) => in_array($k, $sel, true)));
     $summary = !$chosen ? $allLabel : (count($chosen) <= 2 ? implode(', ', array_map(fn($k) => (string)$options[$k], $chosen)) : count($chosen) . ' selected');
     $id = $opt['id'] ?? ('mp_' . preg_replace('/\W/', '', $name) . '_' . substr(md5($caption . $name . microtime()), 0, 5));
-    $search = $opt['search'] ?? (count($options) > 8);
+    $search = $opt['search'] ?? (count($options) > 1);   // v35: every list of choices can be searched as you type
     $h = '<div class="mfield' . (!empty($opt['class']) ? ' ' . h($opt['class']) : '') . '"><span class="mfield-cap" id="' . h($id) . '_cap">' . h($caption) . '</span>'
         . '<details class="mpick' . ($chosen ? ' has-pick' : '') . '" data-mpick data-all="' . h($allLabel) . '" id="' . h($id) . '">'
         . '<summary aria-labelledby="' . h($id) . '_cap ' . h($id) . '_sum"><span class="mpick-sum" id="' . h($id) . '_sum">' . h($summary) . '</span>'
