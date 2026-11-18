@@ -1,6 +1,6 @@
 <?php
 /**
- * Pending approvals for supervisors, department heads and HR: leave steps, overtime requests and (v35) pass slips.
+ * Pending approvals for supervisors, department heads and HR: leave steps, overtime requests, (v35) pass slips and (v36) undertime forms.
  */
 $u = current_user();
 $isHr = can_any(['leave_applications.approve', 'leave_applications.reject']);   // the HR step of every leave chain
@@ -34,6 +34,13 @@ if (is_post()) {
             $msgs[] = pass_slip_decide($id, post('decision') === 'approve' ? 'approve' : 'reject', post('remarks'))[1];
         }
         flash($msgs ? 'success' : 'error', $msgs ? implode(' ', $msgs) : 'Tick the pass slips first.');
+    } elseif ($act === 'undertime') {
+        // v36: Undertime Form: approval tags the undertime of the dates as Approved undertime
+        $msgs = [];
+        foreach (array_map('intval', (array)post('ids', [])) as $id) {
+            $msgs[] = ut_decide($id, post('decision') === 'approve' ? 'approve' : 'reject', post('remarks'))[1];
+        }
+        flash($msgs ? 'success' : 'error', $msgs ? implode(' ', $msgs) : 'Tick the undertime forms first.');
     }
     redirect('approvals');
 }
@@ -53,7 +60,10 @@ $ots = rows("SELECT o.*, e.first_name, e.last_name, e.middle_name, e.suffix FROM
 $psTeam = pass_slip_company_wide() ? null : my_team_ids();
 $passes = rows("SELECT ps.*, e.first_name, e.last_name, e.middle_name, e.suffix FROM pass_slips ps JOIN employees e ON e.id = ps.employee_id WHERE ps.status = 'pending'"
     . ($psTeam !== null ? ' AND ps.employee_id IN (' . ($psTeam ? implode(',', $psTeam) : '0') . ')' : $hrScope) . ' AND ps.employee_id <> ' . (int)my_employee_id() . ' ORDER BY ps.first_date, ps.id');
-page_header('Pending Approvals', ['subtitle' => 'Leave requests routed to you (you can also act from the approval email), your team\'s overtime requests and pass slips, and the loan / deduction requests.']);
+// v36: undertime forms of the team, or of every employee for HR
+$uts = rows("SELECT ua.*, e.first_name, e.last_name, e.middle_name, e.suffix FROM undertime_apps ua JOIN employees e ON e.id = ua.employee_id WHERE ua.status = 'pending'"
+    . ($psTeam !== null ? ' AND ua.employee_id IN (' . ($psTeam ? implode(',', $psTeam) : '0') . ')' : $hrScope) . ' AND ua.employee_id <> ' . (int)my_employee_id() . ' ORDER BY ua.first_date, ua.id');
+page_header('Pending Approvals', ['subtitle' => 'Leave requests routed to you (you can also act from the approval email), your team\'s overtime requests, pass slips and undertime forms, and the loan / deduction requests.']);
 $loanWaiting = loan_req_pending_count();   // v20
 ?>
 <?php if ($loanWaiting || can('loan_approvals.view')): ?>
@@ -91,6 +101,15 @@ $loanWaiting = loan_req_pending_count();   // v20
   <?php if (!$passes) echo empty_row(6, 'None pending.'); foreach ($passes as $ps): ?><tr><td><input type="checkbox" name="ids[]" value="<?= (int)$ps['id'] ?>"></td><td><?= h(full_name($ps)) ?></td><td class="mono nowrap"><?= h($ps['slip_no']) ?></td>
     <td class="small ps-hist-times"><?= pass_slip_entries_html($ps, true) ?></td><td class="small"><?= h($ps['reason']) ?></td>
     <td class="actions"><a class="btn btn-sm" target="_blank" href="<?= url('pass_slip_print', ['id' => $ps['id']]) ?>">View</a></td></tr><?php endforeach; ?>
+  </tbody></table></div>
+</form>
+<form method="post" class="card"><?= csrf_field() ?><input type="hidden" name="_action" value="undertime">
+  <div class="card-head"><div><h2>Undertime forms (<?= count($uts) ?>)</h2><div class="sub">Approving tags the undertime of the dates as approved; it is still computed as undertime.</div></div>
+    <?php if ($uts): ?><div class="row-actions"><input name="remarks" placeholder="Remarks" maxlength="255" style="width:180px;display:inline-block"> <button class="btn btn-success" name="decision" value="approve">Approve selected</button> <button class="btn btn-danger-outline" name="decision" value="reject">Reject selected</button></div><?php endif; ?></div>
+  <div class="table-wrap"><table class="table compact"><thead><tr><th><input type="checkbox" data-check-all="ids[]" aria-label="Select all"></th><th>Employee</th><th>Form no.</th><th>Date(s), time(s) and hours</th><th>Reason / purpose</th><th class="actions"></th></tr></thead><tbody>
+  <?php if (!$uts) echo empty_row(6, 'None pending.'); foreach ($uts as $ut): ?><tr><td><input type="checkbox" name="ids[]" value="<?= (int)$ut['id'] ?>"></td><td><?= h(full_name($ut)) ?></td><td class="mono nowrap"><?= h($ut['ut_no']) ?></td>
+    <td class="small ps-hist-times"><?= ut_entries_html($ut, true) ?></td><td class="small"><?= h($ut['reason']) ?></td>
+    <td class="actions"><a class="btn btn-sm" target="_blank" href="<?= url('undertime_print', ['id' => $ut['id']]) ?>">View</a></td></tr><?php endforeach; ?>
   </tbody></table></div>
 </form>
 <?php page_footer();

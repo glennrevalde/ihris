@@ -49,6 +49,8 @@ return [
     'my_leaves'          => ['ess/leaves.php', 'my_leaves'],
     'my_overtime'        => ['ess/overtime.php', 'my_overtime'],
     'my_pass_slips'      => ['ess/pass_slips.php', 'my_pass_slips'],       // v35
+    'my_undertime'       => ['ess/undertime.php', 'my_undertime'],         // v36
+    'undertime_print'    => ['ams/undertime_print.php', 'auth'],           // v36: own, approver or Undertime Applications (checked on the page)
     'pass_slip_print'    => ['ams/pass_slip_print.php', 'auth'],           // v35: own, approver or Pass Slips (checked on the page)
     'my_payslips'        => ['ess/payslips.php', 'my_payslips'],
     'my_evaluations'     => ['ess/evaluations.php', 'my_evaluations'],
@@ -109,6 +111,8 @@ return [
     'ot_requests'        => ['ams/ot_requests.php', 'ot_requests'],
     'pass_slips'         => ['ams/pass_slips.php', 'pass_slips'],          // v35
     'pass_slip_design'   => ['ams/pass_slip_design.php', 'pass_slip_design'],   // v35
+    'undertime_apps'     => ['ams/undertime_apps.php', 'undertime_apps'],  // v36
+    'undertime_design'   => ['ams/undertime_design.php', 'undertime_design'],   // v36
     'shifts'             => ['ams/shifts.php', 'shifts'],
     'schedules'          => ['ams/schedules.php', 'schedules'],
     'holidays'           => ['ams/holidays.php', 'holidays'],
@@ -194,6 +198,8 @@ return [
     'rpt_register'       => ['reports/register.php', 'rpt_register'],
     'rpt_attendance'     => ['reports/attendance.php', 'rpt_attendance'],
     'rpt_att_logs'       => ['reports/att_logs.php', 'rpt_att_logs'],   // v27
+    'rpt_ut_approved'    => ['reports/undertime.php', 'rpt_ut_approved'],      // v36: Approved Undertime
+    'rpt_ut_unauthorized' => ['reports/undertime.php', 'rpt_ut_unauthorized'], // v36: Unauthorized Undertime
     'rpt_att_detail'     => ['reports/att_detail.php', 'rpt_att_detail'],   // v28
     'rpt_earn_ded'       => ['reports/earn_ded.php', 'rpt_earn_ded'],
     'rpt_journal'        => ['reports/journal.php', 'rpt_journal'],

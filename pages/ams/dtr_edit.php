@@ -75,7 +75,8 @@ if ($locked): ?><div class="alert alert-warning">This date belongs to an approve
       <dt>Day type</dt><dd><?= h(label($d['day_type'])) ?></dd>
       <dt>Status</dt><dd><?= badge($d['status']) ?><?= $d['manual_override'] ? ' <span class="badge badge-purple">Manually corrected</span>' : '' ?></dd>
       <dt>Worked / regular</dt><dd><?= fmt_minutes($d['worked_minutes']) ?> / <?= fmt_minutes($d['regular_minutes']) ?> (break <?= (int)$d['break_minutes'] ?>m)</dd>
-      <dt>Late / undertime</dt><dd><?= (int)$d['late_minutes'] ?> min / <?= (int)$d['undertime_minutes'] ?> min</dd>
+      <dt>Late / undertime</dt><dd><?= (int)$d['late_minutes'] ?> min / <?= (int)$d['undertime_minutes'] ?> min<?php if ((int)$d['undertime_minutes'] > 0): $utf = ut_approved_map([(int)$d['employee_id']], $d['work_date'], $d['work_date'])[(int)$d['employee_id']][$d['work_date']] ?? null; ?>
+        <span class="ut-tag <?= $utf ? 'ut-ok' : 'ut-bad' ?>"><?= $utf ? 'Approved undertime, form ' . h($utf['no']) : 'Unauthorized undertime (no approved undertime form)' ?></span><?php endif; ?></dd>
       <dt>Overtime</dt><dd><?= fmt_minutes($d['ot_minutes']) ?> logged, <?= fmt_minutes($d['approved_ot_minutes']) ?> authorized</dd>
       <dt>Night differential</dt><dd><?= fmt_minutes($d['nd_minutes']) ?> regular, <?= fmt_minutes($d['nd_ot_minutes']) ?> OT</dd>
       <dt>Exceptions</dt><dd><?php foreach (array_filter(explode(',', (string)$d['exceptions'])) as $x): ?><span class="badge badge-amber"><?= h(exception_label($x)) ?></span> <?php endforeach; ?> <?= $d['exceptions'] ? badge($d['exception_status']) : 'None' ?><?= $d['exception_note'] ? '<br><span class="small">' . h($d['exception_note']) . '</span>' : '' ?></dd>

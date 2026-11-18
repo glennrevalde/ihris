@@ -2506,7 +2506,8 @@ table.reg.reg-summary td.nowrap { font-weight: 600; }
 .ps-sheet { box-sizing: border-box; background: #fff; color: #000; line-height: 1.3; margin: 0 auto; position: relative; }
 .ps-sheet * { box-sizing: border-box; }
 @media screen { .ps-sheet { min-height: calc(var(--ps-h, 279mm) - 1mm); } }
-.ps-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4mm; padding-bottom: 2mm; }
+.ps-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 0; padding-bottom: 2mm; }
+.ps-logo-left { margin-right: 4mm; } .ps-logo-right { margin-left: 4mm; }
 .ps-head.ps-rule { border-bottom: 1px solid #555; }
 .ps-logo-cell { min-width: 1mm; }
 .ps-logo-cell.ps-right { text-align: right; }
@@ -2595,3 +2596,64 @@ table.reg.reg-summary td.nowrap { font-weight: 600; }
   .psd-rows-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   .psd-rows { min-width: 560px; }
 }
+
+/* ================================================================ v36: Undertime Form */
+.ut-sheet .ut-head { grid-template-columns: auto 1fr auto; align-items: center; }
+.ut-title-row { display: flex; align-items: baseline; justify-content: space-between; gap: 4mm; margin-top: 2.5mm; }
+.ut-title-row .ut-title { flex: 1; }
+.ut-title { font-weight: 700; margin: 0; }
+.ut-formno { font-style: italic; font-weight: 700; white-space: nowrap; }
+.ut-no-row { display: flex; justify-content: flex-end; margin: 3mm 0 1mm; }
+.ut-sheet > .ut-title { margin: 1mm 0 3mm; }
+.ut-sheet .ut-info { margin: 4mm 0 2mm; }
+.ut-sheet .ps-field { min-height: 4.6mm; }
+.ut-grid { margin-bottom: 1.5mm; }
+.ut-grid th.ut-top { vertical-align: top; padding-top: 1.2mm; }
+.ut-grid th.ut-sub { font-weight: 400; }
+.ut-grid td.center { text-align: center; }
+.ut-grid td.ut-time { white-space: nowrap; font-size: .92em; padding-left: 1mm; padding-right: 1mm; }
+.ut-grid td.ut-reason { font-size: .92em; overflow-wrap: anywhere; }
+.ut-signs { margin-top: 2mm; }
+.ut-signs .ps-sign-row { margin-bottom: 5mm; }
+.ut-footnote { margin-top: 1mm; }
+.ut-footnote .ps-flabel { min-width: 0; font-size: .85em; }
+/* tags of the undertime on the DTR screens */
+.ut-tag { font-size: 11px; font-weight: 600; letter-spacing: .01em; }
+.ut-tag.ut-ok { color: var(--green, #15803d); }
+.ut-tag.ut-bad { color: var(--red, #b91c1c); }
+dd .ut-tag { display: block; margin-top: 2px; }
+/* the application form of the employee */
+.ut-entry { width: 100%; border-collapse: separate; border-spacing: 0; }
+.ut-entry th { font-size: 11.5px; font-weight: 600; color: var(--muted); text-align: left; padding: 0 8px 6px 0; white-space: nowrap; }
+.ut-entry td { padding: 0 8px 10px 0; vertical-align: top; }
+.ut-entry td:last-child { width: 1%; padding-right: 0; }
+.ut-entry input { width: 100%; min-width: 0; }
+.ut-e-shift { margin-top: 4px; font-size: 11.5px; }
+.ut-pairs { display: flex; flex-wrap: wrap; gap: 8px; }
+.ut-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-2); min-width: 230px; flex: 1; }
+.ut-pair[hidden] { display: none; }
+.ut-pair label { display: grid; gap: 3px; margin: 0; }
+.ut-pair label span { font-size: 11px; font-weight: 600; color: var(--muted); }
+.ut-e-sum { display: inline-block; padding-top: 9px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ut-report .ut-subtotal td { background: var(--surface-2); font-weight: 600; }
+.ut-report .ut-total td { font-weight: 700; border-top: 2px solid var(--border-strong, #94a3b8); }
+.doc-table.ut-report .ut-subtotal td { background: #f3f4f6; }
+@media (max-width: 760px) {
+  .ut-entry thead { display: none; }
+  .ut-entry, .ut-entry tbody, .ut-entry tr, .ut-entry td { display: block; width: 100%; }
+  .ut-entry tr { padding: 10px; margin-bottom: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+  .ut-entry td { padding: 0 0 8px; }
+  .ut-entry td:last-child { width: auto; text-align: right; padding: 0; }
+  .ut-entry td[data-label]::before { content: attr(data-label); display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  .ut-pair { min-width: 0; flex-basis: 100%; }
+  .ut-e-sum { padding-top: 0; }
+}
+/* BDO payroll file */
+.bdo-box { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-top: 14px; background: var(--surface-2); }
+.bdo-box h3 { margin: 0 0 4px; font-size: 15px; }
+.bdo-box .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 10px; }
+.bdo-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 12px; align-items: end; }
+.bdo-name { font-family: var(--mono, ui-monospace, monospace); font-weight: 600; }
+.bdo-preview { margin: 10px 0 0; padding: 10px 12px; background: #0f172a; color: #e2e8f0; border-radius: 10px; font: 12.5px/1.55 var(--mono, ui-monospace, monospace); white-space: pre; overflow-x: auto; max-height: 180px; }
+@media (max-width: 900px) { .bdo-grid { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 520px) { .bdo-grid { grid-template-columns: 1fr; } }

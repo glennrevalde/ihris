@@ -37,7 +37,7 @@ If the database can't be reached or hasn't been imported yet, `index.php` shows 
 
 Copy the updated files over the old ones and open the site. `index.php` checks the `db_version`
 setting and applies every missing database change itself (new tables, new columns, new settings),
-so nothing has to be imported by hand. The current database version is **28**. Every company database
+so nothing has to be imported by hand. The current database version is **29**. Every company database
 (see section 12) upgrades itself the same way the first time it is opened.
 
 If you would rather run the SQL yourself (or the web user has no `ALTER`/`CREATE` rights), select
@@ -111,6 +111,7 @@ your HRIS database (for example `hris_web`) in phpMyAdmin and import, in order, 
 * `database/upgrade_to_v27_mysql55.sql` — Per Count benefits (`benefit_types.given_at` *count*, `count_field`) and the Per Count deduction computation (`deduction_types.computation` *per_count*).
 * `database/upgrade_to_v26_mysql55.sql` — longer company / branch codes (`branches.code` 40, `company_code`, `branch_code`, `init_code` 20; `log_staging.co_code`, `branch_code` 20).
 * `database/upgrade_to_v28_mysql55.sql` — Pass Slip Form (Forgot to Swipe / Log): the tables `pass_slips` (the slips filed by the employees) and `form_layouts` (the customizable layout of the printed form).
+* `database/upgrade_to_v29_mysql55.sql` — Undertime Form: the table `undertime_apps` (the undertime applications filed by the employees; approved ones tag the undertime as Approved).
 
 The scripts are written for MySQL 5.5 (no `ADD COLUMN IF NOT EXISTS`; a small stored procedure
 checks `information_schema` first), are safe to run more than once and never touch existing rows
@@ -206,6 +207,19 @@ Demo data covers **August–September 2026**: August has approved cutoffs and fi
 | Duplicate logs | `# of minutes between LOGS w/ same TYPE as INVALID` again drops only a repeat of the same log type (or of two untyped punches), so a short 15-minute break is always kept. |
 | Multi-location hours listed by Co. / Branch | Payroll Batch Transaction and Attendance Batch Transaction Entry: choosing a company / branch lists its employees **and** everyone whose multi-location entry has hours there. Their row shows only the hours of that branch (*Part of a multi-location transaction*); saving it changes that location and the total becomes the sum of the locations again. All companies lists every transaction whole. |
 | Payroll Register and payslips by branch | Payroll Batch Register → Co. / Branch: the employees of the branch plus the multi-location employees who worked there, each with only the pay earned in that branch, its share of the employer contributions and the deductions when it is the deduction source (*Branch part*). The branch totals of all branches add up to the *All* register. **Branch payslip** opens the payslip on that branch's tab. Print Payslips with a company / branch prints the branch payslip of those employees; with All, one consolidated payslip each (or split). Print and CSV export follow the same filter. |
+
+### Additions in version 36: Undertime Form (Approved / Unauthorized undertime) and the BDO File
+
+Database version 29: open the site once (it upgrades by itself) or import `database/upgrade_to_v29_mysql55.sql` (MySQL 5.5, safe to run more than once; it adds the table `undertime_apps`). The stylesheet loads as `app.css?v=43`, the script as `app.js?v=40`.
+
+| Request | Where in the app |
+|---|---|
+| Undertime Application Form in My Workspace, approved like a leave or an overtime request | My Workspace → **Undertime Application Form**: date, the time in / time out (they follow the logs of the employee's shift on that date: 2, 4 or 6 logs, and are filled from the logs when the day is recorded), the total hours (the Daily Time Record's undertime, or an estimate from the schedule before the day is processed) and the reason / purpose, several dates per form. The immediate superior (else the department head, else HR) is emailed and decides in Approvals → Pending Approvals; HR sees all in Attendance → **Undertime Applications**. A pending form can be cancelled; any form, or a blank one, can be printed or saved as PDF. |
+| Distinction between Approved and Unauthorized undertime, nothing differs in the computation | The undertime is computed by the Daily Time Record exactly as before. A date with an approved Undertime Form is tagged **approved**, every other undertime **unauthorized**: shown under the UT column of Daily Time Records and on the day's DTR screen. |
+| Reports for Approved Undertime and Unauthorized Undertime | Reports → **Approved Undertime Report** and **Unauthorized Undertime Report**: date range, company / branch, department, employee group / type, Find (as you type); one row per employee and date (shift, time in / out, undertime h:mm, form no. / approver / reason, or "pending" remarks), subtotal per employee and grand total; Print / PDF and CSV. |
+| Undertime Form fully customizable (Header, Footer, Logos, Signatories): company / branch name, address, contact no., series no., logo, time in / out by the shift's logs, date of undertime, footer with the position and format of the signatories | Attendance → **Undertime Form Design**: paper (half letter landscape like the sample), margins, font; left / right logos (company logo, uploaded image or none); header lines ({company_name}, {company_address}, {branch_name}, contact no. ...); form name and series no. (HRUF-{no}, e.g. 260045) and its position; employee fields; table headings, IN / OUT pairs (by the shift or fixed), widths, rows, formats; signatories by row and column with label, caption, name printed, bold caption, Note, size, spacing; footer Note line and text. Live preview; Restore original layout. |
+| A field for the Company Code provided by BDO and the 2-digit batch number, auto increment | Process & Registers → Bank File / Payroll ATM → **BDO File** box: *Company code (provided by BDO)*, saved per company / branch (Save company code); *Batch number* 01 to 99, increased after each download (with *Start again at 01 on every new upload date*); it can be typed over. |
+| "BDO File", a separate file format (BDO Regular ATM Payroll File Format) | **Download BDO File**: a text file named Company code + upload date MMDDYY + batch number (e.g. XXX07311501.txt), one line per credit: the 12-digit account number, a single tab and the amount with two decimals (`000660000016<TAB>12345.00`), lines ended by CR LF. Only BDO accounts (or no bank given) with 10 to 12 digits are included (padded with zeros to 12); the others are marked in the list. The first lines are previewed before the download. |
 
 ### Additions in version 35: incremental searching everywhere and the Pass Slip Form (Forgot to Swipe/Log)
 

@@ -273,7 +273,7 @@ function pass_slip_next_no(?string $date = null): string
 function pass_slip_row(int $id): ?array
 {
     return row('SELECT ps.*, e.first_name, e.last_name, e.middle_name, e.suffix, e.position, e.employee_no, e.biometric_id, e.supervisor_id,
-                       e.default_branch_id, e.pay_group_id, ou.name AS department, b.name AS branch_name, b.company_name, b.address AS company_address,
+                       e.default_branch_id, e.pay_group_id, e.org_unit_id, ou.name AS department, b.name AS branch_name, b.company_name, b.address AS company_address,
                        eg.name AS employee_group, u.full_name AS approver_user, u.employee_id AS approver_employee_id
                 FROM pass_slips ps JOIN employees e ON e.id = ps.employee_id
                 LEFT JOIN org_units ou ON ou.id = e.org_unit_id LEFT JOIN branches b ON b.id = e.default_branch_id
@@ -475,15 +475,71 @@ function pass_slip_decide(int $id, string $decision, ?string $remarks = null): a
     return [true, $msg . '.'];
 }
 
-/** Email the immediate superior that a slip waits for approval. */
-function pass_slip_notify_filed(array $s): void
+/**
+ * Who is emailed when a slip is filed: the immediate superior (Employee Masterfile > Immediate superior), else the
+ * department head of the employee's unit (walking up the organization), else HR (the users who may approve pass
+ * slips, and the HR notification address of System Settings). Returns [[email, name, who], ...].
+ */
+function pass_slip_recipients(array $s, string $perm = 'pass_slips.approve'): array
 {
-    if (empty($s['supervisor_id']) || !($mail = employee_email((int)$s['supervisor_id']))) {
-        return;
+    $emp = (int)$s['employee_id'];
+    $out = [];
+    $add = function (?string $mail, string $name, string $who) use (&$out) {
+        $mail = trim((string)$mail);
+        if ($mail !== '' && filter_var($mail, FILTER_VALIDATE_EMAIL) && !isset($out[strtolower($mail)])) {
+            $out[strtolower($mail)] = [$mail, $name, $who];
+        }
+    };
+    foreach (['supervisor' => !empty($s['supervisor_id']) ? (int)$s['supervisor_id'] : null,
+              'department head' => !empty($s['org_unit_id']) ? dept_head_of_unit((int)$s['org_unit_id'], $emp) : null] as $who => $id) {
+        if ($id && $id !== $emp && ($mail = employee_email($id))) {
+            $e = row('SELECT first_name, last_name, middle_name, suffix FROM employees WHERE id = ?', [$id]);
+            $add($mail, $e ? full_name($e, false) : '', $who);
+            return array_values($out);
+        }
+    }
+    // HR = the approvers of every employee (Pass Slips approve + DTR approve or Attendance Exceptions resolve), not other teams' superiors
+    foreach (perm_users_with($perm, "email IS NOT NULL AND email <> '' AND (employee_id IS NULL OR employee_id <> ?)", [$emp]) as $u) {
+        $eff = perm_effective($u);
+        if (isset($eff['dtr.approve']) || isset($eff['att_exceptions.approve'])) {
+            $add($u['email'], (string)$u['full_name'], 'HR');
+        }
+    }
+    $add((string)setting('hr_notify_email'), 'HR', 'HR');
+    return array_values($out);
+}
+
+/**
+ * Email the approver(s) that a slip waits for approval. Returns a sentence for the employee: to whom it was sent,
+ * or why no email went out (no immediate superior / no email address / the mail server refused it).
+ */
+function pass_slip_notify_filed(array $s): string
+{
+    $to = pass_slip_recipients($s);
+    if (!$to) {
+        return 'No email was sent: neither your immediate superior, your department head nor HR has an email address in the system. Please inform your superior.';
     }
     $body = '<p>' . h(full_name($s, false)) . ' filed pass slip <strong>' . h($s['slip_no']) . '</strong> (forgot to swipe / log) for approval.</p>'
         . pass_slip_entries_html($s) . '<p>Reason: ' . h($s['reason']) . '</p>' . email_button(abs_url('approvals'), 'Review in ' . app_name());
-    send_mail($mail, null, 'Pass slip ' . $s['slip_no'] . ': ' . full_name($s, false), email_template('Pass slip for approval', $body), 'pass_slip', (int)$s['id']);
+    $sent = [];
+    $failed = [];
+    foreach ($to as [$mail, $name, $who]) {
+        $ok = send_mail($mail, $name ?: null, 'Pass slip ' . $s['slip_no'] . ': ' . full_name($s, false), email_template('Pass slip for approval', $body), 'pass_slip', (int)$s['id']);
+        $label = ($name !== '' ? $name : $mail) . ($who !== 'supervisor' ? ' (' . $who . ')' : '');
+        if ($ok) {
+            $sent[] = $label;
+        } else {
+            $failed[] = $label;
+        }
+    }
+    $msg = $sent ? 'Emailed to ' . implode(', ', $sent) . '.' : '';
+    if ($failed) {
+        $msg .= ' The email to ' . implode(', ', $failed) . ' could not be sent (see Email Outbox).';
+    }
+    if (setting('mail_mode', 'log') === 'log') {
+        $msg .= ' Note: email delivery is set to "log only" in System Settings, so the email was recorded but not sent.';
+    }
+    return trim($msg);
 }
 
 /** Email the employee the decision on the slip. */

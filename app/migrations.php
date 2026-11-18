@@ -15,7 +15,7 @@
  */
 require_once __DIR__ . '/engine/paytrans.php';
 
-const DB_VERSION = 28;
+const DB_VERSION = 29;
 
 function db_version(): int
 {
@@ -1433,10 +1433,43 @@ function migration_v28(): array
     ], 'columns' => [], 'modify' => [], 'settings' => [], 'seeds' => [], 'data' => []];
 }
 
+/**
+ * v36 (database version 29): Undertime Form. The employee applies for undertime from My Workspace, the immediate
+ * superior (or HR) approves it like a leave or an overtime request. The undertime itself is computed as before; an
+ * approved application only tags the undertime of its dates as Approved (the rest is Unauthorized).
+ */
+function migration_v29(): array
+{
+    $e = ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4';
+    return ['tables' => [
+        'undertime_apps' => "CREATE TABLE IF NOT EXISTS undertime_apps (
+  id INT NOT NULL AUTO_INCREMENT,
+  ut_no VARCHAR(30) NOT NULL,
+  employee_id INT NOT NULL,
+  date_filed DATE NOT NULL,
+  first_date DATE NULL COMMENT 'Earliest date of the application',
+  last_date DATE NULL COMMENT 'Latest date of the application',
+  entries TEXT NOT NULL COMMENT 'JSON: [{d: date, t: [in, out, in, out ...], m: undertime minutes, r: reason}]',
+  total_minutes INT NOT NULL DEFAULT 0,
+  reason VARCHAR(500) NULL,
+  status ENUM('pending','approved','rejected','cancelled') NOT NULL DEFAULT 'pending',
+  approved_by INT NULL,
+  approved_at DATETIME NULL,
+  remarks VARCHAR(255) NULL,
+  created_by INT NULL,
+  created_at DATETIME NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_undertime_no (ut_no),
+  KEY idx_undertime_emp (employee_id, first_date),
+  KEY idx_undertime_status (status, first_date)
+)$e",
+    ], 'columns' => [], 'modify' => [], 'settings' => [], 'seeds' => [], 'data' => []];
+}
+
 /** Every upgrade step in order: version => definitions. */
 function migrations_all(): array
 {
-    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21', 22 => 'migration_v22', 23 => 'migration_v23', 24 => 'migration_v24', 25 => 'migration_v25', 26 => 'migration_v26', 27 => 'migration_v27', 28 => 'migration_v28'];
+    return [2 => 'migration_v2', 3 => 'migration_v3', 4 => 'migration_v4', 5 => 'migration_v5', 6 => 'migration_v6', 7 => 'migration_v7', 8 => 'migration_v8', 9 => 'migration_v9', 10 => 'migration_v10', 11 => 'migration_v11', 12 => 'migration_v12', 13 => 'migration_v13', 14 => 'migration_v14', 15 => 'migration_v15', 16 => 'migration_v16', 17 => 'migration_v17', 18 => 'migration_v18', 19 => 'migration_v19', 20 => 'migration_v20', 21 => 'migration_v21', 22 => 'migration_v22', 23 => 'migration_v23', 24 => 'migration_v24', 25 => 'migration_v25', 26 => 'migration_v26', 27 => 'migration_v27', 28 => 'migration_v28', 29 => 'migration_v29'];
 }
 
 function mig_table_exists(string $t): bool
@@ -1614,7 +1647,8 @@ function db_upgrade_sql(int $version = DB_VERSION): string
         '25' => 'Salary restriction: employees whose pay a user may not see',
         '26' => 'Longer company / branch codes (Unique short code 40, Company code and Branch code 20 characters)',
         '27' => 'Per Count: benefits paid per count and deductions per Penalty Ticket of the Payroll Transaction',
-        '28' => 'Pass Slip Form (Forgot to Swipe / Log) and the customizable form layouts'][(string)$version] ?? '';
+        '28' => 'Pass Slip Form (Forgot to Swipe / Log) and the customizable form layouts',
+        '29' => 'Undertime Form: undertime applications (Approved / Unauthorized undertime)'][(string)$version] ?? '';
     $q = fn($v) => $v === null ? 'NULL' : "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], (string)$v) . "'";
     $out = [];
     $out[] = "-- =====================================================================";

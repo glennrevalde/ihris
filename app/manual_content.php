@@ -585,9 +585,32 @@ return [
     'A rejected slip posts nothing; the approver\'s remarks are shown under the status.',
 ],
 'tips' => [
-    'If your employee record has no immediate superior, HR sees and decides the slip.',
+    'The email goes to the Immediate superior of your employee record. If there is none, or he has no email address (on his user account or his 201 file), it goes to your department head, else to HR. The message after Submit says who was emailed, or why no email went out.',
 ],
 'related' => ['pass_slips', 'approvals', 'my_dtr', 'pass_slip_design'],
+],
+
+[
+'slug' => 'my_undertime',
+'section' => 'ess',
+'title' => 'Undertime Application Form',
+'summary' => 'Apply for undertime (leaving early); once your immediate superior approves it, the undertime of those dates is tagged as approved.',
+'roles' => 'all',
+'menu' => 'My Workspace > Undertime Application Form',
+'keywords' => 'undertime form application leave early approved unauthorized time in time out reason purpose print',
+'purpose' => 'The UNDERTIME FORM on screen. It goes through approval like a leave or an overtime request, and it can be printed on the company form whenever a signed copy is needed.',
+'steps' => [
+    'Enter the date. The time in / time out follow the logs of your shift on that date: 2 logs (In, Out), 4 logs (two pairs) or 6 logs (three pairs). When the day is already recorded, the times are filled from your logs; correct them if needed.',
+    'Total hours shows the undertime of the day: the one of your Daily Time Record once the day has its time out, otherwise estimated from your schedule and the times entered.',
+    'Write the reason / purpose. Press Add another date to put more days on the same form.',
+    'Press Submit for approval. The message says who was emailed (your immediate superior, else your department head, else HR).',
+    'Follow the form in My undertime forms. Press Print to print or save it as PDF; Print blank form gives a form filled in with your name only. A pending form can be cancelled.',
+],
+'rules' => [
+    'A date cannot be on two undertime forms that are pending or approved, and a date whose attendance is already closed cannot be filed.',
+    'Undertime is computed the same way with or without a form. An approved form only tags the undertime of its dates as Approved undertime; without one it is Unauthorized undertime.',
+],
+'related' => ['undertime_apps', 'approvals', 'my_dtr', 'rpt_ut_approved'],
 ],
 
 [
@@ -2066,6 +2089,52 @@ return [
 ],
 
 [
+'slug' => 'undertime_apps',
+'section' => 'ams',
+'title' => 'Undertime Applications',
+'summary' => 'Every undertime form filed by the employees: approve or reject them, and print any form.',
+'route' => 'undertime_apps',
+'roles' => ['hr', 'supervisor'],
+'menu' => 'Attendance (AMS) > Undertime Applications',
+'keywords' => 'undertime form application approve reject approved unauthorized print',
+'purpose' => 'HR\'s list of the undertime forms. The immediate superior normally decides them in Pending Approvals; this screen shows all of them with their hours and status.',
+'steps' => [
+    'Filter by status and dates, and type a name, employee no. or form no. in Employee: the list follows as you type.',
+    'Tick the pending forms, write remarks if needed and press Approve selected or Reject selected.',
+    'Press Print on a row to print the form or save it as PDF.',
+],
+'rules' => [
+    'HR (users who may authorize overtime in the DTR or resolve attendance exceptions) sees every employee of their assignment; a superior sees only his team. Nobody approves his own form.',
+    'Approving does not change the computation: the undertime of the dates is tagged as Approved undertime (Daily Time Records, Approved Undertime Report). Undertime without an approved form is Unauthorized undertime.',
+    'On approval the total hours are taken again from the Daily Time Record, in case the days were processed after filing.',
+],
+'related' => ['my_undertime', 'approvals', 'rpt_ut_approved', 'rpt_ut_unauthorized', 'undertime_design'],
+],
+
+[
+'slug' => 'undertime_design',
+'section' => 'ams',
+'title' => 'Undertime Form Design',
+'summary' => 'Customize the printed UNDERTIME FORM: header, logos, series no., table, signatories and footer.',
+'route' => 'undertime_design',
+'roles' => ['hr'],
+'menu' => 'Attendance (AMS) > Undertime Form Design',
+'keywords' => 'undertime form design layout logo header footer signatories series number company name address contact margins',
+'purpose' => 'Makes the printed form look like the company\'s own form. Every change shows at once in the preview (Sample form or Blank form).',
+'steps' => [
+    'Paper and margins: paper size, orientation, margins (mm), font and size.',
+    'Logos: left and right, each the company logo, an uploaded image or none, with its height.',
+    'Header: company / branch name, address, contact no. and any other line, with size, bold and italic. {company_name}, {company_address} and {branch_name} are filled from the employee\'s company / branch.',
+    'Form name and series no.: the title, and the series no. (e.g. HRUF-{no}, {no} = year + running number such as 260045) with its position.',
+    'Employee fields: labels and what each shows, on the left, the right or the full width.',
+    'Table: the headings (DATE, TIME, IN, OUT, TOTAL HOURS, REASON/PURPOSE), the IN / OUT pairs (by the shift: 2, 4 or 6 logs, or fixed), widths, rows, formats.',
+    'Signatories: label, caption, name printed, row and column, bold caption and Note; columns, size, spacing and bold labels. Footer: the Note line and any text.',
+    'Press Save design. Restore original layout brings back the sample form.',
+],
+'related' => ['my_undertime', 'undertime_apps'],
+],
+
+[
 'slug' => 'import_logs',
 'section' => 'ams',
 'title' => 'Customized Import Attendance Log',
@@ -3513,16 +3582,20 @@ return [
     'Choose the employer or branch if the file is split per company.',
     'Check the counter for employees without a bank account. They are excluded from the file and have to be paid by cash or cheque.',
     'Press Download fixed-width .txt or Download CSV.',
+    'For BDO, use the BDO File box: enter the Company code provided by BDO (saved per company / branch with Save company code), check the upload date and the batch number, then press Download BDO File.',
     'Opened from the menu, the screen takes the latest computed or finalized payroll run. Choose another one in Payroll run, and narrow it with Employer / branch and Employee group.',
 ],
 'fields' => [
     ['CSV layout', 'Account number, account name, amount, employee number and a remark carrying the period.'],
     ['Fixed-width layout', 'A header record with the company code, the funding account, the credit date, the total and the record count, one detail record per employee, and a trailer with the count, the total and an account hash.'],
+    ['BDO File', 'BDO Regular ATM Payroll File Format (Business Online Banking): a text file named Company code + upload date MMDDYY + batch number NN (e.g. XXX07311501.txt); one line per credit: the 12-digit account number, a single tab and the amount (12345.00).'],
+    ['Batch number', 'Two digits, 01 to 99. It goes up by one after each download; with Start again at 01 on every new upload date, the first file of a new upload date is 01. It can be typed over.'],
 ],
 'rules' => [
     'Only items with a net pay above zero are listed.',
     'A run that is not finalized only produces a warning. It does not stop the download.',
     'Employees with the account type Cash are left out of the bank file and counted under Cash or no bank account.',
+    'The BDO File takes the credits whose bank is BDO (or not given) with an account number of 10 to 12 digits, padded with zeros to 12. The others are marked in the list.',
 ],
 'tips' => [
     'The fixed-width layout is a generic template. Match the field widths to the specification of your own bank before going live.',
@@ -3709,6 +3782,48 @@ return [
     'A range of more than 16 days prints on legal landscape paper; Save as PDF shrinks a wider listing to the page.',
 ],
 'related' => ['rpt_attendance', 'dtr', 'att_logs', 'import_logs'],
+],
+
+[
+'slug' => 'rpt_ut_approved',
+'section' => 'reports',
+'title' => 'Approved Undertime Report',
+'summary' => 'The undertime of the dates covered by an approved Undertime Form, per employee and date.',
+'route' => 'rpt_ut_approved',
+'roles' => ['hr', 'payroll'],
+'menu' => 'Reports > Approved Undertime Report',
+'keywords' => 'approved undertime report form tagged authorized',
+'purpose' => 'Lists the undertime that was applied for and approved, with the form number, the approver and the reason.',
+'steps' => [
+    'Choose the dates, the company / branch, department, employee group or type, or type a name in Find.',
+    'Read one row per employee and date, a subtotal per employee and the grand total.',
+    'Press Print (or Save as PDF) or Export CSV. Unauthorized Undertime opens the other report with the same filters.',
+],
+'rules' => [
+    'The undertime is the one computed by the Daily Time Record; only the tag differs between the two reports.',
+],
+'related' => ['rpt_ut_unauthorized', 'undertime_apps', 'dtr'],
+],
+
+[
+'slug' => 'rpt_ut_unauthorized',
+'section' => 'reports',
+'title' => 'Unauthorized Undertime Report',
+'summary' => 'The undertime of the dates without an approved Undertime Form, per employee and date.',
+'route' => 'rpt_ut_unauthorized',
+'roles' => ['hr', 'payroll'],
+'menu' => 'Reports > Unauthorized Undertime Report',
+'keywords' => 'unauthorized undertime report no form not approved pending',
+'purpose' => 'Lists the undertime nobody applied for (or that is not yet approved). Remarks say when a form is still pending.',
+'steps' => [
+    'Choose the dates and the other filters, then read the rows, subtotals and total.',
+    'Press Print (or Save as PDF) or Export CSV.',
+],
+'rules' => [
+    'The undertime is the one computed by the Daily Time Record; only the tag differs between the two reports.',
+    'A date whose form is pending, rejected or cancelled stays unauthorized until a form is approved.',
+],
+'related' => ['rpt_ut_approved', 'undertime_apps', 'dtr'],
 ],
 
 [

@@ -79,6 +79,7 @@ function company_menu(): array
             ['My Leaves', 'my_leaves'],
             ['My Overtime Requests', 'my_overtime'],
             ['Pass Slip (Forgot to Swipe/Log)', 'my_pass_slips'],
+            ['Undertime Application Form', 'my_undertime'],
             ['My Payslips', 'my_payslips'],
             ['My Evaluations', 'my_evaluations'],
             ['My Loans & Ledgers', 'my_ledgers'],
@@ -124,6 +125,8 @@ function company_menu(): array
             ['Overtime Authorizations', 'ot_requests'],
             ['Pass Slips (Forgot to Swipe/Log)', 'pass_slips'],
             ['Pass Slip Form Design', 'pass_slip_design'],
+            ['Undertime Applications', 'undertime_apps'],
+            ['Undertime Form Design', 'undertime_design'],
             ['Import Attendance Logs', 'import_logs'],
             ['Import Review Queue', 'import_review'],
             ['Raw Punch Logs', 'att_logs'],
@@ -173,6 +176,8 @@ function company_menu(): array
             ['Payroll Register (summary)', 'rpt_register'],
             ['Attendance Summary Report', 'rpt_attendance'],
             ['Attendance Logs per Employee Listing', 'rpt_att_logs'],
+            ['Approved Undertime Report', 'rpt_ut_approved'],
+            ['Unauthorized Undertime Report', 'rpt_ut_unauthorized'],
             ['Attendance Summary per Employee Detailed Listing', 'rpt_att_detail'],
             ['Earnings & Deductions', 'rpt_earn_ded'],
             ['Year-to-Date Report', 'rpt_ytd'],
@@ -312,7 +317,7 @@ function page_header(string $title, array $opt = []): void
 <meta name="theme-color" content="#0c1533">
 <title><?= h($title) ?> - <?= h($appName) ?></title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c1533'/%3E%3Ctext x='16' y='22' font-family='Segoe UI,Arial' font-size='15' font-weight='700' fill='white' text-anchor='middle'%3E<?= rawurlencode(app_mark()) ?>%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/css/app.css?v=42">
+<link rel="stylesheet" href="assets/css/app.css?v=43">
 </head>
 <body class="<?= $u ? 'has-sidebar' : 'guest' ?>" data-app-name="<?= h($appName) ?>">
 <?php if ($u): ?>
@@ -436,7 +441,7 @@ function page_footer(): void
 <?php else: ?>
 </div>
 <?php endif; ?>
-<script src="assets/js/app.js?v=39"></script>
+<script src="assets/js/app.js?v=40"></script>
 <script src="assets/js/pdf.js?v=33"></script>
 </body>
 </html>
@@ -452,7 +457,7 @@ function print_header(string $title, bool $landscape = false, string $size = '')
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?></title>
-<link rel="stylesheet" href="assets/css/app.css?v=42">
+<link rel="stylesheet" href="assets/css/app.css?v=43">
 <?php if ($landscape): ?><style>@page { size: <?= $size === 'legal' ? 'legal ' : '' ?>landscape; }</style><?php endif; ?>
 </head>
 <body class="print-body">

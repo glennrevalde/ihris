@@ -63,6 +63,8 @@ function perm_defs(): array
         'my_overtime' => ['a' => 'view create', 'def' => '*', 'ops' => ['' => 'create']],
         // v35: Pass Slip Form (Forgot to Swipe / Log): the employee files it, the immediate superior approves it
         'my_pass_slips' => ['a' => 'view create print', 'def' => '*', 'ops' => ['file' => 'create', 'cancel' => 'create', '' => 'create']],
+        // v36: Undertime Application Form: the employee applies, the immediate superior approves
+        'my_undertime' => ['a' => 'view create print', 'def' => '*', 'ops' => ['file' => 'create', 'cancel' => 'create', '' => 'create']],
         'my_payslips' => ['a' => 'view print', 'def' => '*'],
         'my_evaluations' => ['a' => 'view edit', 'def' => '*', 'ops' => ['' => 'edit']],
         'my_ledgers' => ['a' => 'view', 'def' => '*'],
@@ -129,6 +131,8 @@ function perm_defs(): array
         'ot_requests' => ['a' => 'view create approve reject', 'def' => 'hr supervisor'],
         'pass_slips' => ['a' => 'view approve reject print', 'def' => 'hr supervisor', 'ops' => ['decide' => 'approve']],
         'pass_slip_design' => ['a' => 'view configure', 'def' => 'hr', 'ops' => ['save' => 'configure', 'reset' => 'configure', 'preview' => 'view']],
+        'undertime_apps' => ['a' => 'view approve reject print', 'def' => 'hr supervisor', 'ops' => ['decide' => 'approve']],
+        'undertime_design' => ['a' => 'view configure', 'def' => 'hr', 'ops' => ['save' => 'configure', 'reset' => 'configure', 'preview' => 'view']],
         'ams_policies' => ['a' => 'view configure', 'def' => 'hr', 'ops' => ['' => 'configure']],
         // Payroll System (PAY)
         'periods' => ['a' => 'view create edit delete generate approve', 'def' => 'hr payroll',
@@ -161,7 +165,7 @@ function perm_defs(): array
         'pay_register2' => ['a' => 'view generate print export', 'def' => 'payroll', 'ops' => ['reprocess' => 'generate']],
         'pay_inquiry' => ['a' => 'view', 'def' => 'hr payroll'],
         'payslips_print' => ['a' => 'view print', 'def' => 'payroll'],
-        'bank_file' => ['a' => 'view export', 'def' => 'payroll'],
+        'bank_file' => ['a' => 'view export', 'def' => 'payroll', 'ops' => ['bdo' => 'export', 'bdo_save' => 'export']],
         // Reports
         'rpt_periodical' => ['a' => 'view print export', 'def' => 'payroll'],
         'rpt_monthly_contrib' => ['a' => 'view print export', 'def' => 'payroll'],
@@ -171,6 +175,8 @@ function perm_defs(): array
         'rpt_register' => ['a' => 'view print export', 'def' => 'payroll'],
         'rpt_attendance' => ['a' => 'view print export', 'def' => 'hr payroll'],
         'rpt_att_logs' => ['a' => 'view print export', 'def' => 'hr payroll'],   // v27 Attendance Logs per Employee Listing
+        'rpt_ut_approved' => ['a' => 'view print export', 'def' => 'hr payroll'],      // v36 Approved Undertime
+        'rpt_ut_unauthorized' => ['a' => 'view print export', 'def' => 'hr payroll'],  // v36 Unauthorized Undertime
         'rpt_att_detail' => ['a' => 'view print export', 'def' => 'hr payroll'],   // v28 Attendance Summary per Employee Detailed Listing
         'rpt_earn_ded' => ['a' => 'view print export', 'def' => 'payroll'],
         'rpt_ytd' => ['a' => 'view', 'def' => 'payroll'],
@@ -636,7 +642,7 @@ function perm_post_action(string $route, string $page, array $get, array $post):
     if (isset($ops[$a]) && $a !== '') {
         return $ops[$a];
     }
-    if (isset($post['decision']) && in_array($a, ['', 'leave', 'ot', 'decide', 'pass'], true)) {
+    if (isset($post['decision']) && in_array($a, ['', 'leave', 'ot', 'decide', 'pass', 'undertime'], true)) {
         return in_array(strtolower((string)$post['decision']), ['reject', 'disallow', 'return', 'returned', 'rejected'], true) ? 'reject' : 'approve';
     }
     if ($a !== '') {

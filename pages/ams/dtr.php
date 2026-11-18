@@ -37,6 +37,9 @@ $list = rows('SELECT d.*, e.first_name, e.last_name, e.middle_name, e.suffix, e.
               FROM dtr d JOIN employees e ON e.id = d.employee_id LEFT JOIN branches b ON b.id = d.branch_id LEFT JOIN shifts s ON s.id = d.shift_id
               WHERE ' . implode(' AND ', $where) . user_scope_sql('e') . ' ORDER BY ' . ($emp !== '' ? 'd.work_date' : 'd.work_date DESC, e.last_name') . ' LIMIT 3000', $params);
 $tot = ['reg' => 0, 'ot' => 0, 'late' => 0, 'ut' => 0, 'nd' => 0, 'present' => 0, 'absent' => 0];
+// v36: the undertime of a date with an approved Undertime Form is Approved undertime, otherwise Unauthorized
+$utIds = array_values(array_unique(array_map(fn($d) => (int)$d['employee_id'], array_filter($list, fn($d) => (int)$d['undertime_minutes'] > 0))));
+$utMap = $utIds ? ut_approved_map($utIds, $from, $to) : [];
 foreach ($list as $d) {
     $tot['reg'] += $d['regular_minutes'];
     $tot['ot'] += $d['approved_ot_minutes'];
@@ -76,7 +79,7 @@ page_header('Daily Time Records', ['subtitle' => 'Biometric attendance summary: 
         <td class="small"><?= shift_code_html($d['shift_id'] ? shift_row((int)$d['shift_id']) : null, '') ?></td><td class="small"><?= h(label($d['day_type'])) ?></td><td class="small"><?= h($d['branch_code']) ?></td>
         <td class="nowrap"><?= h(fmt_time($d['time_in'])) ?></td><td class="small nowrap"><?= $d['break_out'] || $d['break_in'] ? ($d['break_out'] ? h(date('H:i', strtotime($d['break_out']))) : '<span class="text-bad" title="No break out log">?</span>') . '–' . ($d['break_in'] ? h(date('H:i', strtotime($d['break_in']))) : '<span class="text-bad" title="No break in log">?</span>') : ($d['break_minutes'] ? (int)$d['break_minutes'] . 'm' : '') ?></td>
         <td class="nowrap"><?= h(fmt_time($d['time_out'])) ?></td><td class="num"><?= $d['regular_minutes'] ? hours($d['regular_minutes']) : '' ?></td>
-        <td class="num"><?= $d['late_minutes'] ?: '' ?></td><td class="num"><?= $d['undertime_minutes'] ?: '' ?></td>
+        <td class="num"><?= $d['late_minutes'] ?: '' ?></td><td class="num"><?= $d['undertime_minutes'] ?: '' ?><?= ut_tag_html((int)$d['undertime_minutes'], $utMap[(int)$d['employee_id']][$d['work_date']] ?? null) ?></td>
         <td class="num"><?= $d['ot_minutes'] ? hours($d['approved_ot_minutes']) . ($d['approved_ot_minutes'] < $d['ot_minutes'] ? '<span class="muted">/' . hours($d['ot_minutes']) . '</span>' : '') : '' ?></td>
         <td class="num"><?= ($d['nd_minutes'] + $d['nd_ot_minutes']) ? hours($d['nd_minutes'] + $d['nd_ot_minutes']) : '' ?></td>
         <td><?= badge($d['status']) ?><?= $d['manual_override'] ? ' <span class="badge badge-purple" title="Manually edited">M</span>' : '' ?></td>

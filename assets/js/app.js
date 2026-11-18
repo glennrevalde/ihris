@@ -278,6 +278,72 @@
     fit();
   })();
 
+  /* ------------------------------------------------------------ v36: Undertime Application Form — the day's shift, logs and hours */
+  (function () {
+    var form = document.querySelector('form[data-ut-form]');
+    if (!form) return;
+    var base = form.getAttribute('data-day-url');
+    var seq = 0;
+    function refresh(row, dateChanged) {
+      var d = row.querySelector('[data-ut-date]');
+      if (!d || !/^\d{4}-\d{2}-\d{2}$/.test(d.value)) return;
+      var times = Array.prototype.map.call(row.querySelectorAll('[data-ut-time]'), function (x) { return x.disabled ? '' : x.value; });
+      var qs = '&day=' + encodeURIComponent(d.value);
+      if (!dateChanged) times.forEach(function (t) { qs += '&t[]=' + encodeURIComponent(t || ''); });
+      var my = ++seq; row.__utSeq = my;
+      fetch(base + qs, { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (!j || !j.ok || row.__utSeq !== my) return;
+          Array.prototype.forEach.call(row.querySelectorAll('[data-ut-pair]'), function (p) {
+            var on = +p.getAttribute('data-ut-pair') < j.pairs;
+            p.hidden = !on;
+            Array.prototype.forEach.call(p.querySelectorAll('[data-ut-time]'), function (x) { x.disabled = !on; if (!on) x.value = ''; });
+          });
+          var inputs = row.querySelectorAll('[data-ut-time]');
+          if (dateChanged && j.logs) {
+            // fill the empty times from the logs of the day (the employee corrects them when needed)
+            j.logs.forEach(function (v, i) { if (v && inputs[i] && !inputs[i].value) inputs[i].value = v; });
+          }
+          var sh = row.querySelector('[data-ut-shift]');
+          if (sh) sh.textContent = (j.rest ? 'Rest day' + (j.shift ? ', ' : '') : '') + (j.shift || '');
+          var tot = row.querySelector('[data-ut-total]');
+          if (tot) {
+            tot.textContent = j.minutes > 0 ? j.total : 'none';
+            tot.title = j.ut !== null && j.ut !== undefined ? 'Undertime of your Daily Time Record' : 'Estimated from the times entered and your schedule';
+          }
+          if (dateChanged) refresh(row, false);
+        })
+        .catch(function () {});
+    }
+    form.addEventListener('change', function (e) {
+      var row = e.target.closest && e.target.closest('[data-ut-row]');
+      if (!row) return;
+      if (e.target.matches('[data-ut-date]')) refresh(row, true);
+      else if (e.target.matches('[data-ut-time]')) refresh(row, false);
+    });
+    // a new row: its date starts empty; existing rows are read once
+    Array.prototype.forEach.call(form.querySelectorAll('[data-ut-row]'), function (r) { refresh(r, !Array.prototype.some.call(r.querySelectorAll('[data-ut-time]'), function (x) { return x.value; })); });
+  })();
+
+  /* ------------------------------------------------------------ v36: BDO File — the file name follows the fields; the page reloads after the download */
+  Array.prototype.forEach.call(document.querySelectorAll('form[data-reload-after]'), function (f) {
+    var code = f.querySelector('[data-bdo-code]'), date = f.querySelector('[data-bdo-date]'), batch = f.querySelector('[data-bdo-batch]'), name = f.querySelector('[data-bdo-name]');
+    function show() {
+      if (!name) return;
+      var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date && date.value || '');
+      var d = m ? m[2] + m[3] + m[1].slice(2) : '';
+      var n = Math.max(1, Math.min(99, parseInt(batch && batch.value || '1', 10) || 1));
+      name.textContent = ((code && code.value || '').toUpperCase().replace(/[^A-Z0-9]/g, '') || 'CODE') + d + (n < 10 ? '0' : '') + n + '.txt';
+    }
+    f.addEventListener('input', show);
+    f.addEventListener('change', show);
+    f.addEventListener('submit', function (e) {
+      var sub = e.submitter;
+      if (sub && sub.value === 'bdo') setTimeout(function () { location.href = location.href; }, 1800);
+    });
+  });
+
   /* ------------------------------------------------------------ number cells: select on focus, arrow navigation */
   document.addEventListener('focusin', function (e) {
     var el = e.target;
