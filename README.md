@@ -208,6 +208,17 @@ Demo data covers **August–September 2026**: August has approved cutoffs and fi
 | Multi-location hours listed by Co. / Branch | Payroll Batch Transaction and Attendance Batch Transaction Entry: choosing a company / branch lists its employees **and** everyone whose multi-location entry has hours there. Their row shows only the hours of that branch (*Part of a multi-location transaction*); saving it changes that location and the total becomes the sum of the locations again. All companies lists every transaction whole. |
 | Payroll Register and payslips by branch | Payroll Batch Register → Co. / Branch: the employees of the branch plus the multi-location employees who worked there, each with only the pay earned in that branch, its share of the employer contributions and the deductions when it is the deduction source (*Branch part*). The branch totals of all branches add up to the *All* register. **Branch payslip** opens the payslip on that branch's tab. Print Payslips with a company / branch prints the branch payslip of those employees; with All, one consolidated payslip each (or split). Print and CSV export follow the same filter. |
 
+### Installable app (home-screen icon) for phones and computers
+
+G-SMaRT HRIS can be installed as an app (PWA): it gets its own icon on the phone's home screen / app drawer (or the computer's Start menu / dock) and opens **full screen, without the browser bar**, always on the latest version of the site. No app store and no separate code: the same website, the same database.
+
+* **Android (Chrome)** and **computers (Chrome / Edge)**: open the HRIS and press **Install app** (top bar, or the *Install the app* box on the sign-in page; when the browser does not offer the install itself, the button explains the steps of that browser), or use the browser menu → *Install app* / *Add to Home screen*.
+* **iPhone / iPad (Safari)**: Share → **Add to Home Screen** (the sign-in page says so).
+* Long-press the icon on Android for shortcuts to the Time Clock, My Daily Time Record and My Payslips.
+* Without internet the app shows a *No internet connection* page with Try again, instead of the browser's error page. Pages are never stored on the phone (they hold personal and payroll data); only the stylesheet, scripts and icons are cached so the app opens quickly.
+* It needs **HTTPS** (as the GPS / selfie Time Clock already does). Each client domain (e.g. hris.g-smart.net, nbjhris.g-smart.net) installs as its own app; the app name follows System Settings → System name.
+* Files: `manifest.php` (app name, colors, icons, shortcuts), `sw.js` (service worker), `offline.html`, `assets/icons/` (app icons). Upload them to the same folder as `index.php`. The stylesheet loads as `app.css?v=45`, the script as `app.js?v=42`.
+
 ### Additions in version 36: Undertime Form (Approved / Unauthorized undertime) and the BDO File
 
 Database version 29: open the site once (it upgrades by itself) or import `database/upgrade_to_v29_mysql55.sql` (MySQL 5.5, safe to run more than once; it adds the table `undertime_apps`). The stylesheet loads as `app.css?v=43`, the script as `app.js?v=40`.

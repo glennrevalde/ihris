@@ -2724,3 +2724,74 @@
   sel.addEventListener('change', sync);
   sync();
 })();
+
+/* v36: installable app (PWA). The service worker shows an offline page when there is no connection and keeps the
+   static files ready. "Install app" (top bar and sign-in page) is always shown, except inside the installed app:
+   when the browser offers the install (Chrome / Edge) it opens the install window, otherwise it explains how to
+   install from the browser's menu (iPhone / iPad: Share > Add to Home Screen). */
+(function () {
+  'use strict';
+  if ('serviceWorker' in navigator && window.isSecureContext) {
+    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+  }
+  var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  var all = function (s) { return Array.prototype.slice.call(document.querySelectorAll(s)); };
+  if (standalone) {
+    document.documentElement.classList.add('is-app');
+    all('[data-pwa-install], [data-pwa-install-box]').forEach(function (b) { b.hidden = true; });
+    return;
+  }
+  var deferred = null;
+  var ua = navigator.userAgent;
+  var ios = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var how = function () {
+    if (!window.isSecureContext) {
+      return 'Installing needs a secure address: open the HRIS by its https:// address (or http://localhost on the server computer itself), then press Install again.';
+    }
+    if (ios) return 'On iPhone / iPad: open the HRIS in Safari, tap the Share button, then "Add to Home Screen".';
+    if (/firefox/i.test(ua) && !/android/i.test(ua)) return 'Firefox cannot install web apps on a computer. Open the HRIS in Chrome or Edge, then press Install.';
+    if (/android/i.test(ua)) return 'Tap the browser menu (three dots), then "Install app" or "Add to Home screen".';
+    if (/edg\//i.test(ua)) return 'In Edge: menu (three dots) > Apps > "Install this site as an app". If it is already installed, open it from the Start menu or desktop.';
+    if (/safari/i.test(ua) && !/chrome|chromium/i.test(ua)) return 'In Safari on a Mac: File > "Add to Dock".';
+    return 'In Chrome: click the install icon at the right end of the address bar, or menu (three dots) > "Cast, save and share" > "Install page as app". If it is already installed, open it from the Start menu or desktop.';
+  };
+  var helpModal = function () {
+    var m = document.getElementById('pwaHelp');
+    if (!m) {
+      m = document.createElement('div');
+      m.className = 'modal';
+      m.id = 'pwaHelp';
+      m.innerHTML = '<div class="modal-box pwa-help"><h2>Install the app</h2><p data-pwa-help-text></p>'
+        + '<div class="form-actions"><button type="button" class="btn btn-primary" data-modal-close>OK</button></div></div>';
+      document.body.appendChild(m);
+      m.addEventListener('click', function (e) { if (e.target === m || e.target.closest('[data-modal-close]')) m.classList.remove('open'); });
+    }
+    m.querySelector('[data-pwa-help-text]').textContent = how();
+    m.classList.add('open');
+  };
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    deferred = e;
+  });
+  window.addEventListener('appinstalled', function () {
+    deferred = null;
+    all('[data-pwa-install], [data-pwa-install-box]').forEach(function (b) { b.hidden = true; });
+  });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-pwa-install]');
+    if (!b) return;
+    e.preventDefault();
+    if (deferred) {
+      deferred.prompt();
+      deferred.userChoice.then(function () { deferred = null; });
+      return;
+    }
+    var box = b.closest('[data-pwa-install-box]');
+    var tip = box && box.querySelector('[data-pwa-how]');
+    if (tip) { tip.textContent = how(); tip.hidden = false; } else { helpModal(); }
+  });
+  if (ios) {
+    all('[data-pwa-install-box] span').forEach(function (t) { t.textContent = 'Tap the Share button, then "Add to Home Screen" to put the HRIS on your home screen.'; });
+    all('[data-pwa-install-box] [data-pwa-install]').forEach(function (b) { b.remove(); });
+  }
+})();

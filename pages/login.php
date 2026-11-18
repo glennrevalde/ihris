@@ -98,6 +98,12 @@ page_header('Sign in');
     <?php if ($multi): ?>
       <p class="auth-alt">New employee? <a href="<?= url('register') ?>">Join your company with its Company Code</a></p>
     <?php endif; ?>
+    <div class="pwa-login" data-pwa-install-box>
+      <img src="assets/icons/icon-192.png" alt="" width="40" height="40">
+      <div><strong>Install the app</strong><span>An icon on your phone or computer that opens <?= h(app_name()) ?> full screen.</span></div>
+      <button type="button" class="btn btn-sm" data-pwa-install>Install</button>
+      <p class="pwa-how" data-pwa-how hidden></p>
+    </div>
     <p class="small muted" style="margin-top:18px">Camera and GPS check-in need HTTPS or localhost. Change every password before using the system with real data.</p>
   </div>
 </div>

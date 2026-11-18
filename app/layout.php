@@ -317,7 +317,14 @@ function page_header(string $title, array $opt = []): void
 <meta name="theme-color" content="#0c1533">
 <title><?= h($title) ?> - <?= h($appName) ?></title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230c1533'/%3E%3Ctext x='16' y='22' font-family='Segoe UI,Arial' font-size='15' font-weight='700' fill='white' text-anchor='middle'%3E<?= rawurlencode(app_mark()) ?>%3C/text%3E%3C/svg%3E">
-<link rel="stylesheet" href="assets/css/app.css?v=43">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png">
+<link rel="manifest" href="manifest.php">
+<link rel="apple-touch-icon" href="assets/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="<?= h($appName) ?>">
+<link rel="stylesheet" href="assets/css/app.css?v=45">
 </head>
 <body class="<?= $u ? 'has-sidebar' : 'guest' ?>" data-app-name="<?= h($appName) ?>">
 <?php if ($u): ?>
@@ -373,6 +380,7 @@ function page_header(string $title, array $opt = []): void
       <strong><?= h($title) ?></strong>
     </div>
     <button class="cmdk-btn" type="button" id="cmdkOpen"><?= icon('search') ?><span>Search pages…</span><kbd>Ctrl K</kbd></button>
+    <button class="help-btn pwa-install" type="button" data-pwa-install title="Install <?= h($appName) ?> on this device"><?= icon('download') ?><span>Install app</span></button>
     <?php if (!$superMode): ?><a class="help-btn" href="<?= h(manual_help_url($current)) ?>" title="User manual for this page"><?= icon('book') ?><span>Help</span></a><?php endif; ?>
     <?php if (!$superMode && !in_company_support() && ($switch = mc_switch_targets())): ?>
     <form method="post" action="<?= h(url('switch_company')) ?>" class="co-switch" title="Switch company">
@@ -441,7 +449,7 @@ function page_footer(): void
 <?php else: ?>
 </div>
 <?php endif; ?>
-<script src="assets/js/app.js?v=40"></script>
+<script src="assets/js/app.js?v=42"></script>
 <script src="assets/js/pdf.js?v=33"></script>
 </body>
 </html>
@@ -457,7 +465,7 @@ function print_header(string $title, bool $landscape = false, string $size = '')
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title><?= h($title) ?></title>
-<link rel="stylesheet" href="assets/css/app.css?v=43">
+<link rel="stylesheet" href="assets/css/app.css?v=45">
 <?php if ($landscape): ?><style>@page { size: <?= $size === 'legal' ? 'legal ' : '' ?>landscape; }</style><?php endif; ?>
 </head>
 <body class="print-body">

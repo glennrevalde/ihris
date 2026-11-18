@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0c1533">
+<title>No connection - G-SMaRT HRIS</title>
+<link rel="icon" type="image/png" href="assets/icons/favicon-32.png">
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: grid; place-items: center; padding: 24px; background: linear-gradient(180deg, #1e2d62 0%, #0c1533 70%); color: #e6ebf8;
+         font: 15px/1.55 "Inter", "Segoe UI", Roboto, Arial, sans-serif; }
+  .box { width: 100%; max-width: 380px; text-align: center; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12);
+         border-radius: 18px; padding: 30px 24px 26px; box-shadow: 0 18px 40px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.08); }
+  img { width: 72px; height: 72px; border-radius: 16px; box-shadow: 0 8px 18px rgba(0,0,0,.35); }
+  h1 { font-size: 20px; margin: 18px 0 6px; color: #fff; }
+  p { margin: 0 0 20px; color: #b9c3e3; }
+  button { appearance: none; border: 0; border-radius: 10px; padding: 11px 22px; font-family: inherit; font-size: 15px; font-weight: 600; line-height: 1; color: #0c1533; background: #fff;
+           box-shadow: 0 3px 0 #c9d2ea; cursor: pointer; }
+  button:active { transform: translateY(2px); box-shadow: 0 1px 0 #c9d2ea; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <img src="assets/icons/icon-192.png" alt="">
+    <h1>No internet connection</h1>
+    <p>The HRIS needs the internet to show your records. Check your Wi-Fi or mobile data, then try again.</p>
+    <button type="button" onclick="location.reload()">Try again</button>
+  </div>
+  <script>window.addEventListener('online', function () { location.reload(); });</script>
+</body>
+</html>
